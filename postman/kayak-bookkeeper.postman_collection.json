@@ -1,0 +1,439 @@
+{
+  "info": {
+    "name": "Kayak bookkeeper API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Начните с тарифов и каякеров, затем создайте абонемент одним из двух способов. Все тарифы указывают цену за одну тренировку."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "personId",
+      "value": ""
+    },
+    {
+      "key": "subscriptionId",
+      "value": ""
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "rateId",
+      "value": ""
+    },
+    {
+      "key": "chargeId",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Документация",
+      "item": [
+        {
+          "name": "OpenAPI",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/v3/api-docs"
+          }
+        },
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/swagger-ui/index.html"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Тарифы за тренировку",
+      "item": [
+        {
+          "name": "Создать тариф бассейна",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('rateId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"POOL_RENTAL\",\n  \"amount\": 30000,\n  \"effectiveFrom\": \"2026-11-01\",\n  \"effectiveTo\": null\n}"
+            },
+            "url": "{{baseUrl}}/api/pricing-rates"
+          }
+        },
+        {
+          "name": "Создать тариф юбки",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"code\":\"SKIRT_RENTAL\",\"amount\":1500,\"effectiveFrom\":\"2026-11-01\",\"effectiveTo\":null}"
+            },
+            "url": "{{baseUrl}}/api/pricing-rates"
+          }
+        },
+        {
+          "name": "Список тарифов",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/pricing-rates"
+          }
+        },
+        {
+          "name": "Завершить тариф",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"effectiveTo\":\"2026-11-30\"}"
+            },
+            "url": "{{baseUrl}}/api/pricing-rates/{{rateId}}/effective-to"
+          }
+        },
+        {
+          "name": "Удалить тариф",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/pricing-rates/{{rateId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Каякеры",
+      "item": [
+        {
+          "name": "Создать каякера",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('personId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"fullName\":\"Алия Абдрахманова\",\"phone\":\"+77011234567\"}"
+            },
+            "url": "{{baseUrl}}/api/people"
+          }
+        },
+        {
+          "name": "Изменить каякера",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"fullName\":\"Алия Абдрахманова\",\"phone\":\"+77017654321\",\"note\":\"Обновлены контакты\",\"active\":true}"
+            },
+            "url": "{{baseUrl}}/api/people/{{personId}}"
+          }
+        },
+        {
+          "name": "Список каякеров",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/people"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Абонементы",
+      "item": [
+        {
+          "name": "Создать по списку дат",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { const b=pm.response.json(); pm.collectionVariables.set('subscriptionId', b.id); pm.collectionVariables.set('sessionId', b.sessions[0].id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"startsAt\":[\"2026-11-10T19:00:00\",\"2026-11-17T19:00:00\"],\"capacity\":8,\"title\":\"Ноябрь, вторник\",\"description\":\"Вечерняя группа\"}"
+            },
+            "url": "{{baseUrl}}/api/subscriptions"
+          }
+        },
+        {
+          "name": "Создать по расписанию",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"dayOfWeek\":\"TUESDAY\",\"startTime\":\"19:00\",\"startDate\":\"2026-11-10\",\"sessionCount\":4,\"capacity\":8,\"title\":\"Ноябрь, вторник\",\"description\":\"Вечерняя группа\"}"
+            },
+            "url": "{{baseUrl}}/api/subscriptions/recurring"
+          }
+        },
+        {
+          "name": "Получить все абонементы",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/subscriptions"
+          }
+        },
+        {
+          "name": "Получить абонемент",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}"
+          }
+        },
+        {
+          "name": "Добавить участника",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"personId\":{{personId}},\"usesSkirt\":true,\"usesPaddle\":false,\"usesKayak\":false}"
+            },
+            "url": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/members"
+          }
+        },
+        {
+          "name": "Финализировать",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/finalize"
+          }
+        },
+        {
+          "name": "Завершить",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/complete"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Посещения",
+      "item": [
+        {
+          "name": "Перекличка",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/sessions/{{sessionId}}/roster"
+          }
+        },
+        {
+          "name": "Отметить отсутствие",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"personId\":{{personId}},\"status\":\"ABSENT\"}"
+            },
+            "url": "{{baseUrl}}/api/sessions/{{sessionId}}/attendance"
+          }
+        },
+        {
+          "name": "Добавить разового посетителя",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"personId\":{{personId}}}"
+            },
+            "url": "{{baseUrl}}/api/sessions/{{sessionId}}/drop-ins"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Начисления и платежи",
+      "item": [
+        {
+          "name": "Создать ручное начисление",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('chargeId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"personId\":{{personId}},\"amount\":1000,\"chargedAt\":\"2026-11-10\",\"description\":\"Корректировка\",\"subscriptionId\":{{subscriptionId}}}"
+            },
+            "url": "{{baseUrl}}/api/charges"
+          }
+        },
+        {
+          "name": "Изменить начисление",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"amount\":1200,\"chargedAt\":\"2026-11-10\",\"description\":\"Исправленная корректировка\"}"
+            },
+            "url": "{{baseUrl}}/api/charges/{{chargeId}}"
+          }
+        },
+        {
+          "name": "Создать платёж",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) pm.collectionVariables.set('paymentId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"personId\":{{personId}},\"amount\":1200,\"paidAt\":\"2026-11-10\",\"method\":\"CASH\"}"
+            },
+            "url": "{{baseUrl}}/api/payments"
+          }
+        },
+        {
+          "name": "Распределить платёж",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"chargeId\":{{chargeId}},\"amount\":1200}"
+            },
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}/allocations"
+          }
+        },
+        {
+          "name": "Баланс",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/people/{{personId}}/balance"
+          }
+        }
+      ]
+    }
+  ]
+}
