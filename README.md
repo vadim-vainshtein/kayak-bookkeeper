@@ -4,16 +4,32 @@ API учёта тренировок, абонементов, начислени�
 
 Карточка каякера изменяется через `PUT /api/people/{id}`: передайте `fullName`, `phone`, `note` и `active`. Деактивация сохраняет его историю, но не позволяет добавить человека в новый абонемент.
 
-## Запуск
+## Локальная разработка
 
 ```powershell
 docker compose up -d
+# В первом терминале: API на http://localhost:8080
 mvn spring-boot:run "-Dspring-boot.run.profiles=local"
+# Во втором терминале: UI на http://localhost:5173
+cd frontend
+npm ci
+npm run dev
 ```
+
+Исходный код интерфейса находится в отдельном проекте `frontend/`. Команда `mvn spring-boot:run` не собирает frontend: для локальной работы используйте Vite на `http://localhost:5173`, который проксирует API на Spring Boot.
+
+## Сборка приложения
+
+```powershell
+mvn clean package
+java -jar target/kayak-bookkeeper-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+```
+
+`mvn clean package` автоматически выполняет `npm ci`, собирает UI и включает готовые статические файлы в исполняемый JAR. В упакованной версии интерфейс доступен по `http://localhost:8080/`.
 
 Локальная PostgreSQL доступна на `localhost:5450`: база `kayak_bookkeeper`, пользователь `postgres`, пароль `example`.
 
-Минималистичный интерфейс управления доступен по адресу [http://localhost:8080/](http://localhost:8080/). При первом запуске создаётся пользователь `admin` с паролем `admin`; сразу смените его на вкладке «Пароль» (новый пароль — от 8 до 72 символов). API защищён HTTP Basic-аутентификацией. Swagger UI и OpenAPI JSON остаются доступны по адресам [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html) и [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs). Импортируйте [Postman-коллекцию](postman/kayak-bookkeeper.postman_collection.json) и при необходимости поменяйте `baseUrl`.
+В упакованной версии минималистичный интерфейс управления доступен по адресу [http://localhost:8080/](http://localhost:8080/). При первом запуске создаётся пользователь `admin` с паролем `admin`; сразу смените его на вкладке «Пароль» (новый пароль — от 8 до 72 символов). API защищён HTTP Basic-аутентификацией. Swagger UI и OpenAPI JSON остаются доступны по адресам [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html) и [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs). Импортируйте [Postman-коллекцию](postman/kayak-bookkeeper.postman_collection.json) и при необходимости поменяйте `baseUrl`.
 
 ## Модель
 

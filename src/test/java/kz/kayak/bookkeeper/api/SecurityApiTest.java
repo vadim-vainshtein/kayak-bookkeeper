@@ -7,8 +7,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -34,17 +40,20 @@ class SecurityApiTest {
     }
 
     @Test
-    void servesManagementInterfaceWithoutAuthentication() throws Exception {
+    void forwardsRootToTheFrontendEntryPointWithoutAuthentication() throws Exception {
         mockMvc.perform(get("/"))
                 .andExpect(status().isOk())
                 .andExpect(forwardedUrl("/index.html"));
 
-        mockMvc.perform(get("/index.html"))
+        MvcResult entryPoint = mockMvc.perform(get("/index.html"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("Kayak Bookkeeper")))
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("esm.sh"))));
-
-        mockMvc.perform(get("/webjars/react/18.3.1/umd/react.production.min.js"))
+                .andExpect(content().string(containsString("Kayak Bookkeeper")))
+                .andExpect(content().string(containsString("/assets/")))
+                .andExpect(content().string(not(containsString("webjars"))))
+                .andReturn();
+        Matcher asset = Pattern.compile("src=\\\"(/assets/[^\\\"]+\\.js)\\\"").matcher(entryPoint.getResponse().getContentAsString());
+        org.junit.jupiter.api.Assertions.assertTrue(asset.find(), "Vite entry script must be referenced by index.html");
+        mockMvc.perform(get(asset.group(1)))
                 .andExpect(status().isOk());
     }
 
