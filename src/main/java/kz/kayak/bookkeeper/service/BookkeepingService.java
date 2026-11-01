@@ -21,6 +21,15 @@ public class BookkeepingService {
     }
     public Api.PersonView createPerson(Api.PersonRequest r) { return personView(people.save(new Person(r.fullName(), r.phone(), r.note()))); }
     public List<Api.PersonView> listPeople() { return people.findAll().stream().map(this::personView).toList(); }
+    public List<Api.PersonBalanceSummaryView> listPersonBalances() {
+        Map<Long, Long> chargedByPerson = charges.findAll().stream().collect(Collectors.groupingBy(charge -> charge.getPerson().getId(), Collectors.summingLong(Charge::getAmount)));
+        Map<Long, Long> paidByPerson = payments.findAll().stream().collect(Collectors.groupingBy(payment -> payment.getPerson().getId(), Collectors.summingLong(Payment::getAmount)));
+        return people.findAll().stream().map(person -> {
+            long charged = chargedByPerson.getOrDefault(person.getId(), 0L);
+            long paid = paidByPerson.getOrDefault(person.getId(), 0L);
+            return new Api.PersonBalanceSummaryView(person.getId(), person.getFullName(), person.isActive(), charged, paid, charged - paid);
+        }).toList();
+    }
     @Transactional public Api.PersonView updatePerson(long id, Api.PersonUpdateRequest r) { Person person=get(people,id,"Person"); person.update(r.fullName(),r.phone(),r.note(),r.active()); return personView(person); }
     public Api.RateView createRate(Api.RateRequest r) {
         if (r.effectiveTo()!=null && r.effectiveTo().isBefore(r.effectiveFrom())) throw new DomainException("effectiveTo cannot be before effectiveFrom");
@@ -42,6 +51,24 @@ public class BookkeepingService {
     @Transactional public Api.SubscriptionView createRecurringSubscription(Api.RecurringSubscriptionRequest r) {
         LocalDate first=r.startDate().with(TemporalAdjusters.nextOrSame(r.dayOfWeek())); List<LocalDateTime> dates=new ArrayList<>();
         for(int i=0;i<r.sessionCount();i++) dates.add(LocalDateTime.of(first.plusWeeks(i),r.startTime())); return createSubscription(dates,r.capacity(),r.title(),r.description());
+    }
+    @Transactional public Api.SubscriptionView createRecurringSubscriptionWithMembers(Api.RecurringSubscriptionWithMembersRequest r) {
+        if(r.members().isEmpty()) throw new DomainException("Subscription must have at least one member");
+        int capacity=r.capacity()==null ? 8 : r.capacity();
+        if(r.members().size()>capacity) throw new DomainException("Subscription capacity has been reached");
+        Set<Long> personIds=new HashSet<>(); List<Person> selectedPeople=new ArrayList<>();
+        for(Api.MemberRequest member:r.members()) {
+            if(!personIds.add(member.personId())) throw new DomainException("Person is already in this subscription");
+            Person person=get(people,member.personId(),"Person");
+            if(!person.isActive()) throw new DomainException("Inactive person cannot join a subscription");
+            selectedPeople.add(person);
+        }
+        LocalDate first=r.startDate().with(TemporalAdjusters.nextOrSame(r.dayOfWeek())); List<LocalDateTime> dates=new ArrayList<>();
+        for(int i=0;i<r.sessionCount();i++) dates.add(LocalDateTime.of(first.plusWeeks(i),r.startTime()));
+        Subscription subscription=subscriptions.save(new Subscription(r.capacity(),r.title(),r.description()));
+        dates.forEach(date->sessions.save(new TrainingSession(subscription,date)));
+        for(int i=0;i<r.members().size();i++) { Api.MemberRequest member=r.members().get(i); members.save(new SubscriptionMember(subscription,selectedPeople.get(i),member.usesSkirt(),member.usesPaddle(),member.usesKayak())); }
+        return subscriptionView(subscription);
     }
     private Api.SubscriptionView createSubscription(List<LocalDateTime> dates,Integer capacity,String title,String description) { Subscription s=subscriptions.save(new Subscription(capacity,title,description)); dates.forEach(d->sessions.save(new TrainingSession(s,d))); return subscriptionView(s); }
     @Transactional public Api.SubscriptionView addMember(long id,Api.MemberRequest r) {
@@ -71,6 +98,7 @@ public class BookkeepingService {
         return all.stream().map(subscription->subscriptionView(subscription,membersBySubscription.getOrDefault(subscription.getId(),List.of()),sessionsBySubscription.getOrDefault(subscription.getId(),List.of()))).toList();
     }
     public Api.SubscriptionView getSubscription(long id) { return subscriptionView(get(subscriptions,id,"Subscription")); }
+    @Transactional public Api.SubscriptionView updateSubscriptionMetadata(long id, Api.SubscriptionMetadataUpdateRequest r) { Subscription subscription=lockedSubscription(id); subscription.updateMetadata(r.title(),r.description()); return subscriptionView(subscription); }
     @Transactional public Api.AttendanceView markSubscriptionAttendance(long id,Api.AttendanceRequest r) {
         TrainingSession session=get(sessions,id,"Training session"); Subscription s=lockedSubscription(session.getSubscription().getId()); if(s.getStatus()!=SubscriptionStatus.FINALIZED) throw new DomainException("Finalize subscription before taking attendance"); if(r.status()==AttendanceStatus.PLANNED) throw new DomainException("Attendance must be PRESENT or ABSENT");
         Person p=get(people,r.personId(),"Person"); SubscriptionMember member=members.findBySubscriptionAndPerson(s,p).orElseThrow(()->new DomainException("Person is not a member of this session's subscription")); Attendance entry=attendance.findByTrainingSessionAndPerson(session,p).orElseGet(()->new Attendance(session,p,member,AttendanceType.SUBSCRIPTION,r.status()));
@@ -85,10 +113,35 @@ public class BookkeepingService {
         for(SubscriptionMember m:members.findBySubscription(session.getSubscription())) { Attendance a=marked.get(m.getPerson().getId()); entries.add(a==null?new Api.AttendanceView(null,m.getPerson().getId(),m.getPerson().getFullName(),AttendanceType.SUBSCRIPTION,AttendanceStatus.PLANNED):attendanceView(a)); } recorded.stream().filter(a->a.getType()==AttendanceType.DROP_IN).map(this::attendanceView).forEach(entries::add); entries.sort(Comparator.comparing(Api.AttendanceView::type).thenComparing(Api.AttendanceView::personName)); return new Api.RosterView(id,session.getSubscription().getCapacity(),Math.max(0,absences(session)-visitors(session)),entries);
     }
     @Transactional public Api.ChargeView createManualCharge(Api.ManualChargeRequest r) { Person p=get(people,r.personId(),"Person"); Subscription s=r.subscriptionId()==null?null:get(subscriptions,r.subscriptionId(),"Subscription"); if(s!=null && members.findBySubscriptionAndPerson(s,p).isEmpty()) throw new DomainException("Person is not a member of this subscription"); return chargeView(charges.save(new Charge(p,s,null,ChargeType.MANUAL,r.amount(),r.chargedAt(),r.description()))); }
-    @Transactional public Api.ChargeView editCharge(long id,Api.ChargeEditRequest r) { Charge c=get(charges,id,"Charge"); if(charges.allocatedFor(c)>r.amount()) throw new DomainException("Charge amount cannot be below allocated payment amount"); c.edit(r.amount(),r.chargedAt(),r.description()); syncEditedAutomaticCharge(c); return chargeView(c); }
+    @Transactional public Api.ChargeView editCharge(long id,Api.ChargeEditRequest r) { Charge c=lockedCharge(id); if(charges.allocatedFor(c)>r.amount()) throw new DomainException("Charge amount cannot be below allocated payment amount"); c.edit(r.amount(),r.chargedAt(),r.description()); syncEditedAutomaticCharge(c); return chargeView(c); }
     public Api.PaymentView createPayment(Api.PaymentRequest r) { Person p=get(people,r.personId(),"Person"); return paymentView(payments.save(new Payment(p,r.amount(),r.paidAt(),r.method(),r.note()))); }
-    @Transactional public void allocatePayment(long id,Api.AllocationRequest r) { Payment p=get(payments,id,"Payment"); Charge c=get(charges,r.chargeId(),"Charge"); if(!p.getPerson().getId().equals(c.getPerson().getId())) throw new DomainException("Payment and charge must belong to the same person"); if(payments.allocatedFor(p)+r.amount()>p.getAmount()) throw new DomainException("Allocation exceeds payment amount"); if(charges.allocatedFor(c)+r.amount()>c.getAmount()) throw new DomainException("Allocation exceeds charge amount"); allocations.save(new PaymentAllocation(p,c,r.amount())); }
-    public Api.BalanceView balance(long id) { Person p=get(people,id,"Person"); List<Charge> c=charges.findByPerson(p); long total=c.stream().mapToLong(Charge::getAmount).sum(), paid=payments.findByPerson(p).stream().mapToLong(Payment::getAmount).sum(); return new Api.BalanceView(id,total,paid,total-paid,c.stream().map(this::chargeView).toList()); }
+    @Transactional public Api.PaymentView createPaymentWithAllocation(Api.PaymentWithAllocationRequest r) {
+        if ((r.chargeId()==null) != (r.allocationAmount()==null)) throw new DomainException("Choose both a charge and an allocation amount, or neither");
+        Person person=get(people,r.personId(),"Person");
+        Charge charge = r.chargeId()==null ? null : lockedCharge(r.chargeId());
+        if (charge!=null) validateAllocation(person, r.amount(), charge, r.allocationAmount());
+        Payment payment=payments.save(new Payment(person,r.amount(),r.paidAt(),r.method(),r.note()));
+        if (charge!=null) allocations.save(new PaymentAllocation(payment,charge,r.allocationAmount()));
+        return paymentView(payment);
+    }
+    @Transactional public void allocatePayment(long id,Api.AllocationRequest r) { Payment p=lockedPayment(id); Charge c=lockedCharge(r.chargeId()); if(!p.getPerson().getId().equals(c.getPerson().getId())) throw new DomainException("Payment and charge must belong to the same person"); if(payments.allocatedFor(p)+r.amount()>p.getAmount()) throw new DomainException("Allocation exceeds payment amount"); if(charges.allocatedFor(c)+r.amount()>c.getAmount()) throw new DomainException("Allocation exceeds charge amount"); allocations.save(new PaymentAllocation(p,c,r.amount())); }
+    public Api.BalanceView balance(long id) { Person p=get(people,id,"Person"); List<Charge> c=charges.findByPerson(p); List<Payment> paymentList=payments.findByPerson(p); long total=c.stream().mapToLong(Charge::getAmount).sum(), paid=paymentList.stream().mapToLong(Payment::getAmount).sum(); return new Api.BalanceView(id,total,paid,total-paid,c.stream().map(this::chargeView).toList(),paymentList.stream().map(this::paymentView).toList()); }
+    private void validateAllocation(Person person, long paymentAmount, Charge charge, long allocationAmount) { if(!person.getId().equals(charge.getPerson().getId())) throw new DomainException("Payment and charge must belong to the same person"); if(allocationAmount>paymentAmount) throw new DomainException("Allocation exceeds payment amount"); if(charges.allocatedFor(charge)+allocationAmount>charge.getAmount()) throw new DomainException("Allocation exceeds charge amount"); }
+    private Payment lockedPayment(long id) { return payments.findWithLockById(id).orElseThrow(()->new NoSuchElementException("Payment "+id+" was not found")); }
+    private Charge lockedCharge(long id) { return charges.findWithLockById(id).orElseThrow(()->new NoSuchElementException("Charge "+id+" was not found")); }
     private long sumRate(List<TrainingSession> ss,RateCode c){return ss.stream().mapToLong(s->applicableAmount(c,s.getStartsAt().toLocalDate())).sum();} private boolean dropInsConsumeAllAbsences(TrainingSession s){return visitors(s)>=absences(s);} private long absences(TrainingSession s){return attendance.countByTrainingSessionAndTypeAndStatus(s,AttendanceType.SUBSCRIPTION,AttendanceStatus.ABSENT);} private long visitors(TrainingSession s){return attendance.countByTrainingSessionAndTypeAndStatus(s,AttendanceType.DROP_IN,AttendanceStatus.PRESENT);} private List<TrainingSession> sessionsFor(Subscription s){return sessions.findAll().stream().filter(x->x.getSubscription().getId().equals(s.getId())).sorted(Comparator.comparing(TrainingSession::getStartsAt)).toList();} private void syncEditedAutomaticCharge(Charge c){if(c.getSubscription()==null||c.getType()==ChargeType.MANUAL||c.getType()==ChargeType.DROP_IN)return; SubscriptionMember member=members.findBySubscriptionAndPerson(c.getSubscription(),c.getPerson()).orElseThrow(()->new DomainException("Automatic charge has no subscription member")); member.editAutomaticFee(c.getType(),c.getAmount());} private Subscription lockedSubscription(long id){return subscriptions.findWithLockById(id).orElseThrow(()->new NoSuchElementException("Subscription "+id+" was not found"));} private long applicableAmount(RateCode c,LocalDate d){return rates.applicable(c,d).stream().findFirst().orElseThrow(()->new DomainException("No active "+c+" rate on "+d)).getAmount();} private static boolean overlaps(LocalDate af,LocalDate at,LocalDate bf,LocalDate bt){return(at==null||!at.isBefore(bf))&&(bt==null||!bt.isBefore(af));} private static long ceilDiv(long v,long d){return(v+d-1)/d;} private void ensureDraft(Subscription s){if(s.getStatus()!=SubscriptionStatus.DRAFT)throw new DomainException("Only a draft subscription can be changed");} private <T>T get(org.springframework.data.jpa.repository.JpaRepository<T,Long> r,long id,String label){return r.findById(id).orElseThrow(()->new NoSuchElementException(label+" "+id+" was not found"));}
-    private Api.PersonView personView(Person p){return new Api.PersonView(p.getId(),p.getFullName(),p.getPhone(),p.getNote(),p.isActive());} private Api.RateView rateView(PricingRate r){return new Api.RateView(r.getId(),r.getCode(),r.getAmount(),r.getEffectiveFrom(),r.getEffectiveTo());} private Api.MemberView memberView(SubscriptionMember m){return new Api.MemberView(m.getId(),m.getPerson().getId(),m.getPerson().getFullName(),m.isUsesSkirt(),m.isUsesPaddle(),m.isUsesKayak(),m.getPoolShare(),m.getSkirtFee(),m.getPaddleFee(),m.getKayakFee());} private Api.SessionView sessionView(TrainingSession s){return new Api.SessionView(s.getId(),s.getStartsAt());} private Api.SubscriptionView subscriptionView(Subscription s){return subscriptionView(s,members.findBySubscription(s),sessionsFor(s));} private Api.SubscriptionView subscriptionView(Subscription s,List<SubscriptionMember> subscriptionMembers,List<TrainingSession> subscriptionSessions){return new Api.SubscriptionView(s.getId(),s.getCapacity(),s.getTitle(),s.getDescription(),s.getStatus(),s.getPoolRentalAmount(),subscriptionMembers.stream().map(this::memberView).toList(),subscriptionSessions.stream().sorted(Comparator.comparing(TrainingSession::getStartsAt)).map(this::sessionView).toList());} private Api.AttendanceView attendanceView(Attendance a){return new Api.AttendanceView(a.getId(),a.getPerson().getId(),a.getPerson().getFullName(),a.getType(),a.getStatus());} private Api.PaymentView paymentView(Payment p){return new Api.PaymentView(p.getId(),p.getPerson().getId(),p.getAmount(),p.getPaidAt(),p.getMethod(),p.getNote());} private Api.ChargeView chargeView(Charge c){return new Api.ChargeView(c.getId(),c.getType(),c.getAmount(),charges.allocatedFor(c),c.getChargedAt(),c.getDescription(),c.getSubscription()==null?null:c.getSubscription().getId(),c.getAttendance()==null?null:c.getAttendance().getId());}
+    private Api.PersonView personView(Person p) { return new Api.PersonView(p.getId(), p.getFullName(), p.getPhone(), p.getNote(), p.isActive()); }
+    private Api.RateView rateView(PricingRate r) { return new Api.RateView(r.getId(), r.getCode(), r.getAmount(), r.getEffectiveFrom(), r.getEffectiveTo()); }
+    private Api.MemberView memberView(SubscriptionMember m) { return new Api.MemberView(m.getId(), m.getPerson().getId(), m.getPerson().getFullName(), m.isUsesSkirt(), m.isUsesPaddle(), m.isUsesKayak(), m.getPoolShare(), m.getSkirtFee(), m.getPaddleFee(), m.getKayakFee()); }
+    private Api.SessionView sessionView(TrainingSession s) { return new Api.SessionView(s.getId(), s.getStartsAt()); }
+    private Api.SubscriptionView subscriptionView(Subscription s) { return subscriptionView(s, members.findBySubscription(s), sessionsFor(s)); }
+    private Api.SubscriptionView subscriptionView(Subscription s, List<SubscriptionMember> subscriptionMembers, List<TrainingSession> subscriptionSessions) { return new Api.SubscriptionView(s.getId(), s.getCapacity(), s.getTitle(), s.getDescription(), s.getStatus(), s.getPoolRentalAmount(), subscriptionMembers.stream().map(this::memberView).toList(), subscriptionSessions.stream().sorted(Comparator.comparing(TrainingSession::getStartsAt)).map(this::sessionView).toList()); }
+    private Api.AttendanceView attendanceView(Attendance a) { return new Api.AttendanceView(a.getId(), a.getPerson().getId(), a.getPerson().getFullName(), a.getType(), a.getStatus()); }
+    private Api.PaymentView paymentView(Payment payment) {
+        List<Api.PaymentAllocationView> paymentAllocations = allocations.findByPayment(payment).stream()
+                .map(allocation -> new Api.PaymentAllocationView(allocation.getId(), allocation.getCharge().getId(), allocation.getCharge().getDescription(), allocation.getAmount()))
+                .toList();
+        return new Api.PaymentView(payment.getId(), payment.getPerson().getId(), payment.getAmount(), payment.getPaidAt(), payment.getMethod(), payment.getNote(), paymentAllocations);
+    }
+    private Api.ChargeView chargeView(Charge c) { return new Api.ChargeView(c.getId(), c.getType(), c.getAmount(), charges.allocatedFor(c), c.getChargedAt(), c.getDescription(), c.getSubscription()==null?null:c.getSubscription().getId(), c.getAttendance()==null?null:c.getAttendance().getId()); }
 }

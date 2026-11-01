@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -60,5 +61,20 @@ class PeopleApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fullName\":\" \",\"active\":true}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void listsPeopleWithTheirBalanceSummaries() throws Exception {
+        Api.PersonView person = service.createPerson(new Api.PersonRequest("Алия", null, null));
+        service.createManualCharge(new Api.ManualChargeRequest(person.id(), 5_000, java.time.LocalDate.of(2026, 11, 1), "Тренировка", null));
+        service.createPayment(new Api.PaymentRequest(person.id(), 2_000, java.time.LocalDate.of(2026, 11, 2), kz.kayak.bookkeeper.domain.PaymentMethod.CASH, null));
+
+        mockMvc.perform(get("/api/people/balances").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].personId").value(person.id()))
+                .andExpect(jsonPath("$[0].fullName").value("Алия"))
+                .andExpect(jsonPath("$[0].charged").value(5_000))
+                .andExpect(jsonPath("$[0].paid").value(2_000))
+                .andExpect(jsonPath("$[0].balance").value(3_000));
     }
 }

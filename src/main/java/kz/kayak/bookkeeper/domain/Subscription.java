@@ -13,6 +13,7 @@ public class Subscription {
     public Subscription(Integer capacity) { this(capacity, null, null); }
     public Subscription(Integer capacity, String title, String description) { this.capacity=capacity == null ? 8 : capacity; this.title=title; this.description=description; }
     public Long getId() { return id; } public int getCapacity() { return capacity; } public String getTitle() { return title; } public String getDescription() { return description; } public SubscriptionStatus getStatus() { return status; } public Long getPoolRentalAmount() { return poolRentalAmount; }
+    public void updateMetadata(String title, String description) { this.title = title; this.description = description; }
     public void finalizeWith(long amount) { this.poolRentalAmount=amount; this.status=SubscriptionStatus.FINALIZED; }
     public void complete() { this.status = SubscriptionStatus.COMPLETED; }
 }

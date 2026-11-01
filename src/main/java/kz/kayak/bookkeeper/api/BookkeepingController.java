@@ -25,6 +25,8 @@ public class BookkeepingController {
     @PostMapping("/people") @ResponseStatus(HttpStatus.CREATED) public Api.PersonView createPerson(@Valid @RequestBody Api.PersonRequest body) { return service.createPerson(body); }
     @Operation(summary = "Получить список каякеров")
     @GetMapping("/people") public List<Api.PersonView> people() { return service.listPeople(); }
+    @Operation(summary = "Получить список каякеров с краткими балансами")
+    @GetMapping("/people/balances") public List<Api.PersonBalanceSummaryView> peopleBalances() { return service.listPersonBalances(); }
     @Operation(summary = "Изменить карточку каякера", description = "Позволяет изменить контактные данные, заметку и признак активности. Уже существующие абонементы, начисления и платежи сохраняются.")
     @ApiResponse(responseCode = "404", description = "Каякер не найден")
     @PutMapping("/people/{id}") public Api.PersonView updatePerson(@Parameter(description = "Идентификатор каякера") @PathVariable long id, @Valid @RequestBody Api.PersonUpdateRequest body) { return service.updatePerson(id, body); }
@@ -44,10 +46,15 @@ public class BookkeepingController {
     @PostMapping("/subscriptions") @ResponseStatus(HttpStatus.CREATED) public Api.SubscriptionView createSubscription(@Valid @RequestBody Api.ExplicitSubscriptionRequest body) { return service.createExplicitSubscription(body); }
     @Operation(summary = "Создать абонемент по еженедельному расписанию", description = "Вычисляет next-or-same дату указанного дня недели и последующие еженедельные тренировки. title и description необязательны.")
     @PostMapping("/subscriptions/recurring") @ResponseStatus(HttpStatus.CREATED) public Api.SubscriptionView createRecurringSubscription(@Valid @RequestBody Api.RecurringSubscriptionRequest body) { return service.createRecurringSubscription(body); }
+    @Operation(summary = "Создать еженедельный абонемент с участниками", description = "Расписание и весь список участников сохраняются одной транзакцией.")
+    @PostMapping("/subscriptions/recurring-with-members") @ResponseStatus(HttpStatus.CREATED) public Api.SubscriptionView createRecurringSubscriptionWithMembers(@Valid @RequestBody Api.RecurringSubscriptionWithMembersRequest body) { return service.createRecurringSubscriptionWithMembers(body); }
     @Operation(summary = "Получить все абонементы", description = "Возвращает полные карточки абонементов в порядке создания (по возрастанию идентификатора).")
     @GetMapping("/subscriptions") public List<Api.SubscriptionView> subscriptions() { return service.listSubscriptions(); }
     @Operation(summary = "Получить абонемент")
     @GetMapping("/subscriptions/{id}") public Api.SubscriptionView subscription(@Parameter(description = "Идентификатор абонемента") @PathVariable long id) { return service.getSubscription(id); }
+    @Operation(summary = "Изменить название и описание абонемента", description = "Доступно при любом статусе. Расписание, состав участников, вместимость и рассчитанные начисления не изменяются.")
+    @ApiResponse(responseCode = "404", description = "Абонемент не найден")
+    @PutMapping("/subscriptions/{id}/metadata") public Api.SubscriptionView updateSubscriptionMetadata(@Parameter(description = "Идентификатор абонемента") @PathVariable long id, @Valid @RequestBody Api.SubscriptionMetadataUpdateRequest body) { return service.updateSubscriptionMetadata(id, body); }
     @Operation(summary = "Добавить участника в абонемент", description = "Можно добавить не более вместимости абонемента.")
     @ApiResponse(responseCode = "409", description = "Абонемент закрыт или вместимость исчерпана")
     @PostMapping("/subscriptions/{id}/members") @ResponseStatus(HttpStatus.CREATED) public Api.SubscriptionView addMember(@Parameter(description = "Идентификатор абонемента") @PathVariable long id, @Valid @RequestBody Api.MemberRequest body) { return service.addMember(id, body); }
@@ -71,6 +78,8 @@ public class BookkeepingController {
     @PutMapping("/charges/{id}") public Api.ChargeView editCharge(@Parameter(description = "Идентификатор начисления") @PathVariable long id, @Valid @RequestBody Api.ChargeEditRequest body) { return service.editCharge(id, body); }
     @Operation(summary = "Зарегистрировать платёж")
     @PostMapping("/payments") @ResponseStatus(HttpStatus.CREATED) public Api.PaymentView payment(@Valid @RequestBody Api.PaymentRequest body) { return service.createPayment(body); }
+    @Operation(summary = "Зарегистрировать платёж и распределить его одной операцией")
+    @PostMapping("/payments/with-allocation") @ResponseStatus(HttpStatus.CREATED) public Api.PaymentView paymentWithAllocation(@Valid @RequestBody Api.PaymentWithAllocationRequest body) { return service.createPaymentWithAllocation(body); }
     @Operation(summary = "Распределить платёж по начислению")
     @PostMapping("/payments/{id}/allocations") @ResponseStatus(HttpStatus.NO_CONTENT) public void allocate(@Parameter(description = "Идентификатор платежа") @PathVariable long id, @Valid @RequestBody Api.AllocationRequest body) { service.allocatePayment(id, body); }
     @Operation(summary = "Получить баланс каякера")

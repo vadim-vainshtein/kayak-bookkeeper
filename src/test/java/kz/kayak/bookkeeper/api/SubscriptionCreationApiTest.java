@@ -13,6 +13,7 @@ import java.util.List;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.hamcrest.Matchers.nullValue;
+import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest @AutoConfigureMockMvc @Transactional
 class SubscriptionCreationApiTest {
  static final String ADMIN_AUTHORIZATION = "Basic YWRtaW46YWRtaW4=";
@@ -21,6 +22,13 @@ class SubscriptionCreationApiTest {
  @Test void createsExplicitSubscriptionAndReturnsSortedDatesAndMetadata() throws Exception { mockMvc.perform(post("/api/subscriptions").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION).contentType(MediaType.APPLICATION_JSON).content("{\"startsAt\":[\"2026-11-17T19:00:00\",\"2026-11-10T19:00:00\"],\"capacity\":3,\"title\":\"Ноябрь\",\"description\":\"Вечерняя группа\"}")).andExpect(status().isCreated()).andExpect(jsonPath("$.capacity").value(3)).andExpect(jsonPath("$.title").value("Ноябрь")).andExpect(jsonPath("$.description").value("Вечерняя группа")).andExpect(jsonPath("$.sessions[0].startsAt").value("2026-11-10T19:00:00")); }
  @Test void derivesRecurringDatesAndReturnsMetadata() throws Exception { mockMvc.perform(post("/api/subscriptions/recurring").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION).contentType(MediaType.APPLICATION_JSON).content("{\"dayOfWeek\":\"TUESDAY\",\"startTime\":\"19:00\",\"startDate\":\"2026-11-10\",\"sessionCount\":2,\"title\":\"Вторник\",\"description\":\"Утренняя группа\"}")).andExpect(status().isCreated()).andExpect(jsonPath("$.capacity").value(8)).andExpect(jsonPath("$.title").value("Вторник")).andExpect(jsonPath("$.description").value("Утренняя группа")).andExpect(jsonPath("$.sessions[1].startsAt").value("2026-11-17T19:00:00")); }
  @Test void acceptsAbsentOptionalMetadata() throws Exception { mockMvc.perform(post("/api/subscriptions").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION).contentType(MediaType.APPLICATION_JSON).content("{\"startsAt\":[\"2026-11-10T19:00:00\"]}")).andExpect(status().isCreated()).andExpect(jsonPath("$.title").value(nullValue())).andExpect(jsonPath("$.description").value(nullValue())); }
+ @Test void updatesSubscriptionMetadataWithoutChangingItsScheduleOrCapacity() throws Exception {
+  Api.SubscriptionView subscription = service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(LocalDateTime.of(2026, 11, 10, 19, 0)), 3, "Старое", "Старое описание"));
+  mockMvc.perform(put("/api/subscriptions/{id}/metadata", subscription.id()).header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION).contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"Ноябрь\",\"description\":\"Вечерняя группа\"}"))
+    .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(subscription.id())).andExpect(jsonPath("$.title").value("Ноябрь")).andExpect(jsonPath("$.description").value("Вечерняя группа")).andExpect(jsonPath("$.capacity").value(3)).andExpect(jsonPath("$.sessions.length()").value(1));
+  Api.SubscriptionView updated = service.getSubscription(subscription.id());
+  assertThat(updated.status()).isEqualTo(subscription.status());
+ }
  @Test void listsCompleteSubscriptionsInCreationOrder() throws Exception {
   Api.SubscriptionView first=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(LocalDateTime.of(2026,11,17,19,0)),null,"Первый","Описание первого"));
   Api.SubscriptionView second=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(LocalDateTime.of(2026,11,10,19,0),LocalDateTime.of(2026,11,24,19,0)),3,"Второй","Описание второго"));

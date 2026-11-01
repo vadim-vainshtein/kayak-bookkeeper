@@ -1,122 +1,152 @@
-import { useEffect, useState } from 'react';
+import { isValidElement, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { basicAuth, createApi } from './api';
 import Login from './components/Login';
-import PasswordForm from './components/PasswordForm';
 
-const formatDate = (value) => value
-  ? new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: value.includes('T') ? 'short' : undefined }).format(new Date(value))
-  : '—';
+const rateLabels = { POOL_RENTAL: 'Аренда бассейна', DROP_IN: 'Разовое посещение', SKIRT_RENTAL: 'Аренда юбки', PADDLE_RENTAL: 'Аренда весла', KAYAK_RENTAL: 'Аренда каяка' };
+const statusLabels = { DRAFT: 'Черновик', FINALIZED: 'Рассчитан', COMPLETED: 'Завершён' };
+const methodLabels = { CASH: 'Наличные', TRANSFER: 'Перевод', OTHER: 'Другое' };
+const chargeLabels = { POOL_SHARE: 'Доля бассейна', SKIRT_RENT: 'Аренда юбки', PADDLE_RENT: 'Аренда весла', KAYAK_RENT: 'Аренда каяка', DROP_IN: 'Разовое посещение', MANUAL: 'Ручное начисление' };
+const days = [['MONDAY', 'Понедельник'], ['TUESDAY', 'Вторник'], ['WEDNESDAY', 'Среда'], ['THURSDAY', 'Четверг'], ['FRIDAY', 'Пятница'], ['SATURDAY', 'Суббота'], ['SUNDAY', 'Воскресенье']];
+const formatDate = (value) => value ? new Intl.DateTimeFormat('ru-RU', { dateStyle: 'medium', timeStyle: value.includes('T') ? 'short' : undefined }).format(new Date(value)) : '—';
+const money = (value) => `${new Intl.NumberFormat('ru-RU').format(value || 0)} ₸`;
+const today = () => { const date = new Date(); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
+const activeRate = (rate) => rate.effectiveFrom <= today() && (!rate.effectiveTo || rate.effectiveTo >= today());
+const signedBalance = (value) => { const display = -value; return display > 0 ? `+${money(display)}` : money(display); };
+const balanceClass = (value) => value > 0 ? 'debt' : value < 0 ? 'credit' : '';
+const balanceLabel = (value) => value > 0 ? `Долг: ${money(value)}` : value < 0 ? `Переплата: ${money(-value)}` : 'Баланс нулевой';
 
-function Overview({ people, subscriptions, rates }) {
-  return (
-    <div className="grid">
-      <section className="card"><h3>Каякеры</h3><div className="metric">{people.filter((person) => person.active).length}</div><p className="muted">активных</p></section>
-      <section className="card"><h3>Абонементы</h3><div className="metric">{subscriptions.length}</div><p className="muted">всего</p></section>
-      <section className="card"><h3>Тарифы</h3><div className="metric">{rates.length}</div><p className="muted">настроено</p></section>
-      <section className="card wide"><h2>Быстрый старт</h2><p className="muted">Добавьте каякеров, настройте тарифы и создайте абонемент через API или Swagger.</p></section>
-    </div>
-  );
+function defaultValueKey(node, values = []) {
+  if (Array.isArray(node)) { node.forEach((child) => defaultValueKey(child, values)); return values.join('|'); }
+  if (!isValidElement(node)) return values.join('|');
+  if (node.key != null) values.push(`key:${node.key}`);
+  if (Object.hasOwn(node.props, 'defaultValue')) values.push(`value:${node.props.defaultValue}`);
+  defaultValueKey(node.props.children, values);
+  return values.join('|');
 }
 
-function People({ people, onAdd }) {
-  return (
-    <div className="grid">
-      <section className="card">
-        <h2>Новый каякер</h2>
-        <form onSubmit={onAdd}>
-          <label>Имя<input name="fullName" required placeholder="Имя и фамилия" /></label>
-          <label>Телефон<input name="phone" placeholder="+7…" /></label>
-          <button className="primary">Добавить</button>
-        </form>
-      </section>
-      <section className="card">
-        <h2>Каякеры</h2>
-        <ul className="list">{people.map((person) => <li key={person.id}><div className="line"><strong>{person.fullName}</strong><span className="muted">{person.active ? 'активен' : 'неактивен'}</span></div><small className="muted">{person.phone || 'Телефон не указан'}</small></li>)}</ul>
-      </section>
-    </div>
-  );
+function Modal({ open, onClose, title, children }) {
+  const ref = useRef(null);
+  const closingForState = useRef(false);
+  const retainedChildren = useRef(children);
+  const retainedKey = useRef(defaultValueKey(children));
+  const titleId = `modal-title-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  if (children) { retainedChildren.current = children; retainedKey.current = defaultValueKey(children); }
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) { closingForState.current = true; dialog.close(); }
+  }, [open]);
+  const close = () => ref.current?.close();
+  return <dialog ref={ref} className="modal-dialog" aria-labelledby={titleId} onClose={() => {
+    const stateDriven = closingForState.current;
+    closingForState.current = false;
+    if (!stateDriven) onClose();
+  }} onClick={(event) => { if (event.target === event.currentTarget) close(); }}>
+    <div className="modal-header"><h2 id={titleId}>{title}</h2><button type="button" onClick={close} aria-label="Закрыть окно">Закрыть</button></div>
+    <div key={retainedKey.current}>{retainedChildren.current}</div>
+  </dialog>;
 }
 
-function Subscriptions({ subscriptions }) {
-  return <section className="card"><h2>Абонементы</h2><ul className="list">{subscriptions.map((subscription) => <li key={subscription.id}><div className="line"><strong>{subscription.title || 'Без названия'}</strong><span className="muted">{subscription.status}</span></div><div className="muted">{subscription.members.length}/{subscription.capacity} участников · {subscription.sessions.length} тренировок</div>{subscription.sessions[0] && <small className="muted">Начало: {formatDate(subscription.sessions[0].startsAt)}</small>}</li>)}</ul></section>;
+function Overview({ people, subscriptions, rates, go }) {
+  const drafts = subscriptions.filter((subscription) => subscription.status === 'DRAFT').length;
+  return <div className="grid">
+    <section className="card"><h3>Каякеры</h3><div className="metric">{people.filter((person) => person.active).length}</div><p className="muted">активных</p><button className="primary" onClick={() => go('people')}>К каякерам</button></section>
+    <section className="card"><h3>Абонементы</h3><div className="metric">{subscriptions.length}</div><p className="muted">{drafts ? `${drafts} ждут расчёта` : 'все обработаны'}</p><button className="primary" onClick={() => go('subscriptions')}>К абонементам</button></section>
+    <section className="card"><h3>Тарифы</h3><div className="metric">{rates.filter(activeRate).length}</div><p className="muted">действуют сегодня</p><button className="primary" onClick={() => go('rates')}>К тарифам</button></section>
+    <section className="card wide"><h2>Что сделать дальше</h2><p className="muted">{people.length === 0 ? 'Добавьте каякеров, затем создайте абонемент.' : !rates.some(activeRate) ? 'Настройте действующие тарифы, чтобы рассчитать абонемент.' : drafts ? 'Проверьте расписание и участников черновика, затем рассчитайте его.' : 'Создайте следующий абонемент или проверьте журнал оплат.'}</p></section>
+  </div>;
 }
 
-function Rates({ rates }) {
-  return <section className="card"><h2>Тарифы</h2><ul className="list">{rates.map((rate) => <li key={rate.id}><div className="line"><strong>{rate.code}</strong><span>{new Intl.NumberFormat('ru-RU').format(rate.amount)} ₸</span></div><small className="muted">{formatDate(rate.effectiveFrom)} — {formatDate(rate.effectiveTo)}</small></li>)}</ul></section>;
+function People({ people, onAdd, onUpdate, submitting }) {
+  const [adding, setAdding] = useState(false); const [editing, setEditing] = useState(null); const [query, setQuery] = useState(''); const [activeOnly, setActiveOnly] = useState(false);
+  const visible = people.filter((person) => (!activeOnly || person.active) && `${person.fullName} ${person.phone || ''}`.toLowerCase().includes(query.toLowerCase()));
+  const form = (person, submit) => <form key={person?.id || 'new'} onSubmit={submit}><label>Имя <span className="required">*</span><input name="fullName" required defaultValue={person?.fullName || ''} placeholder="Имя и фамилия" /></label><label>Телефон<input name="phone" type="tel" defaultValue={person?.phone || ''} placeholder="+7 700 000 00 00" /></label>{person && <><label>Заметка<textarea name="note" rows="3" defaultValue={person.note || ''} /></label><label className="checkbox"><input type="checkbox" name="active" defaultChecked={person.active} />Активен</label></>}<div className="dialog-actions"><button className="primary" disabled={submitting}>{person ? 'Сохранить' : 'Добавить'}</button></div></form>;
+  return <section className="card"><div className="line"><h2>Каякеры</h2><button className="primary" onClick={() => setAdding(true)}>Добавить каякера</button></div><label>Поиск<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Имя или телефон" /></label><label className="checkbox"><input type="checkbox" checked={activeOnly} onChange={(event) => setActiveOnly(event.target.checked)} />Только активные</label>{visible.length ? <ul className="list">{visible.map((person) => <li key={person.id}><button className="person" onClick={() => setEditing(person)}><div className="line"><strong>{person.fullName}</strong><span className="muted">{person.active ? 'активен' : 'неактивен'}</span></div><small className="muted">{person.phone || 'Телефон не указан'}</small></button></li>)}</ul> : <p className="muted">Никого не найдено.</p>}<Modal open={adding} onClose={() => setAdding(false)} title="Новый каякер">{form(null, async (event) => { const ok = await onAdd(event); if (ok) setAdding(false); })}</Modal><Modal open={Boolean(editing)} onClose={() => setEditing(null)} title="Редактировать каякера">{editing && form(editing, async (event) => { const ok = await onUpdate(event, editing); if (ok) setEditing(null); })}</Modal></section>;
 }
+
+function MemberPicker({ people, members, setMembers }) {
+  const update = (id, key, value) => { const next = { ...members }; if (key === 'member') { if (value) next[id] = { skirt: false, paddle: false, kayak: false }; else delete next[id]; } else next[id] = { ...next[id], [key]: value }; setMembers(next); };
+  return <fieldset className="member-picker"><legend>Участники</legend>{people.filter((person) => person.active).map((person) => { const member = members[person.id]; return <div className="member-option" key={person.id}><label className="checkbox"><input type="checkbox" checked={Boolean(member)} onChange={(event) => update(person.id, 'member', event.target.checked)} />{person.fullName}</label>{member && <div className="equipment"><label className="checkbox"><input type="checkbox" checked={member.skirt} onChange={(event) => update(person.id, 'skirt', event.target.checked)} />Юбка</label><label className="checkbox"><input type="checkbox" checked={member.paddle} onChange={(event) => update(person.id, 'paddle', event.target.checked)} />Весло</label><label className="checkbox"><input type="checkbox" checked={member.kayak} onChange={(event) => update(person.id, 'kayak', event.target.checked)} />Каяк</label></div>}</div>; })}</fieldset>;
+}
+
+function Subscriptions({ people, subscriptions, create, update, finalize, complete, submitting }) {
+  const [creating, setCreating] = useState(false); const [selectedId, setSelectedId] = useState(null); const [editing, setEditing] = useState(false); const [members, setMembers] = useState({}); const [capacityError, setCapacityError] = useState('');
+  useEffect(() => { if (!selectedId) return; const dialog = [...document.querySelectorAll('.modal-dialog')].find((item) => item.querySelector('h2')?.textContent === 'Редактировать абонемент'); dialog?.querySelector('form')?.reset(); }, [selectedId]);
+  const selected = subscriptions.find((subscription) => subscription.id === selectedId);
+  async function createSubmit(event) { const count = Object.keys(members).length; const capacity = Number(new FormData(event.currentTarget).get('capacity')); if (!count) { event.preventDefault(); setCapacityError('Выберите хотя бы одного участника: без него абонемент нельзя рассчитать.'); return; } if (count > capacity) { event.preventDefault(); setCapacityError('Количество участников не должно превышать вместимость.'); return; } const ok = await create(event, members); if (ok) { setMembers({}); setCreating(false); } }
+  return <div className="grid subscriptions-grid"><section className="card"><div className="line"><h2>Абонементы</h2><button className="primary" onClick={() => setCreating(true)}>Создать абонемент</button></div>{subscriptions.length ? <ul className="list">{subscriptions.map((subscription) => <li key={subscription.id}><button className={`subscription ${selectedId === subscription.id ? 'selected' : ''}`} onClick={() => setSelectedId(subscription.id)}><div className="line"><strong>{subscription.title || 'Без названия'}</strong><span className="status">{statusLabels[subscription.status]}</span></div><small className="muted">{subscription.members.length}/{subscription.capacity} участников · {subscription.sessions.length} тренировок</small></button></li>)}</ul> : <p className="muted">Абонементов пока нет.</p>}</section>{selected && <section className="card"><div className="line"><div><h2>{selected.title || 'Абонемент без названия'}</h2><span className="status">{statusLabels[selected.status]}</span></div><button onClick={() => setEditing(true)}>Редактировать</button></div><h3>Расписание</h3><ul className="plain-list">{selected.sessions.map((session) => <li key={session.id}>{formatDate(session.startsAt)}</li>)}</ul><h3>Участники</h3><ul className="plain-list">{selected.members.map((member) => <li key={member.id}>{member.personName}</li>)}</ul>{selected.status === 'DRAFT' && <button className="primary" disabled={submitting} onClick={() => finalize(selected)}>Рассчитать абонемент</button>}{selected.status === 'FINALIZED' && <button className="primary" disabled={submitting} onClick={() => complete(selected)}>Завершить абонемент</button>}</section>}<Modal open={creating} onClose={() => setCreating(false)} title="Новый абонемент"><form onSubmit={createSubmit}><p className="muted">Еженедельное расписание и участники на одном экране.</p><label>Название<input name="title" maxLength="255" placeholder="Например, ноябрь · вторник" /></label><label>Описание<textarea name="description" rows="2" maxLength="1000" /></label><div className="form-columns"><label>День недели<select name="dayOfWeek" defaultValue="TUESDAY">{days.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Время<input name="startTime" type="time" defaultValue="19:00" required /></label></div><div className="form-columns"><label>Первая дата <span className="required">*</span><input name="startDate" type="date" defaultValue={today()} required /></label><label>Тренировок <span className="required">*</span><input name="sessionCount" type="number" min="1" max="52" defaultValue="4" required /></label></div><label>Вместимость <span className="required">*</span><input name="capacity" type="number" min="1" max="8" defaultValue="8" required aria-invalid={Boolean(capacityError)} aria-describedby={capacityError ? 'subscription-capacity-error' : undefined} onInput={() => setCapacityError('')} />{capacityError && <small id="subscription-capacity-error" className="validation-message" role="alert">{capacityError}</small>}</label><MemberPicker people={people} members={members} setMembers={(next) => { setMembers(next); setCapacityError(''); }} /><div className="dialog-actions"><button className="primary" disabled={submitting}>Создать абонемент</button></div></form></Modal><Modal open={editing && Boolean(selected)} onClose={() => setEditing(false)} title="Редактировать абонемент">{selected && <form onSubmit={async (event) => { const ok = await update(event, selected); if (ok) setEditing(false); }}><label>Название<input name="title" maxLength="255" defaultValue={selected.title || ''} /></label><label>Описание<textarea name="description" rows="3" maxLength="1000" defaultValue={selected.description || ''} /></label><div className="dialog-actions"><button className="primary" disabled={submitting}>Сохранить</button></div></form>}</Modal></div>;
+}
+
+function Rates({ rates, create, end, submitting }) {
+  const [creating, setCreating] = useState(false); const [ending, setEnding] = useState(null); const [from, setFrom] = useState(today()); const [to, setTo] = useState(''); const [createDateError, setCreateDateError] = useState(''); const [endDateError, setEndDateError] = useState(''); const [endDate, setEndDate] = useState('');
+  const lastEndingId = useRef(null);
+  useLayoutEffect(() => { if (ending && lastEndingId.current !== ending.id) { lastEndingId.current = ending.id; setEndDate(''); setEndDateError(''); } }, [ending]);
+  async function createSubmit(event) { if (to && to < from) { event.preventDefault(); setCreateDateError('Дата окончания не может быть раньше даты начала.'); return; } const ok = await create(event); if (ok) { setCreating(false); setFrom(today()); setTo(''); setCreateDateError(''); } }
+  async function endSubmit(event) { if (endDate < ending.effectiveFrom) { event.preventDefault(); setEndDateError('Дата окончания не может быть раньше даты начала.'); return; } const ok = await end(event, ending); if (ok) { setEnding(null); setEndDate(''); setEndDateError(''); } }
+  return <section className="card"><div className="line"><h2>Тарифы</h2><button className="primary" onClick={() => { setCreateDateError(''); setCreating(true); }}>Добавить тариф</button></div>{rates.length ? <ul className="list">{rates.map((rate) => <li key={rate.id}><div className="line"><strong>{rateLabels[rate.code]}</strong><span>{money(rate.amount)}</span></div><small className="muted">{formatDate(rate.effectiveFrom)} — {formatDate(rate.effectiveTo)} {activeRate(rate) && <span className="status">действует</span>}</small>{!rate.effectiveTo && <div className="list-actions"><button onClick={() => { setEndDateError(''); setEnding(rate); }}>Завершить действие</button></div>}</li>)}</ul> : <p className="muted">Тарифов пока нет.</p>}<Modal open={creating} onClose={() => setCreating(false)} title="Новый тариф"><form onSubmit={createSubmit}><label>Услуга <span className="required">*</span><select name="code" defaultValue="POOL_RENTAL">{Object.entries(rateLabels).map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label><label>Сумма, ₸ <span className="required">*</span><input name="amount" type="number" min="1" required /></label><div className="form-columns"><label>Действует с <span className="required">*</span><input name="effectiveFrom" type="date" value={from} onChange={(event) => { setFrom(event.target.value); setCreateDateError(to && to < event.target.value ? 'Дата окончания не может быть раньше даты начала.' : ''); }} required /></label><label>По дату включительно<input name="effectiveTo" type="date" min={from} value={to} aria-invalid={Boolean(createDateError)} aria-describedby={createDateError ? 'rate-date-error' : undefined} onChange={(event) => { setTo(event.target.value); setCreateDateError(event.target.value && event.target.value < from ? 'Дата окончания не может быть раньше даты начала.' : ''); }} />{createDateError && <small id="rate-date-error" className="validation-message" role="alert">{createDateError}</small>}</label></div><div className="dialog-actions"><button className="primary" disabled={submitting}>Добавить тариф</button></div></form></Modal><Modal open={Boolean(ending)} onClose={() => setEnding(null)} title="Закончить действие тарифа">{ending && <form onSubmit={endSubmit}><p className="muted">Тариф перестанет применяться после выбранной даты.</p><label>Дата окончания <span className="required">*</span><input name="effectiveTo" type="date" min={ending.effectiveFrom} value={endDate} onChange={(event) => { setEndDate(event.target.value); setEndDateError(event.target.value && event.target.value < ending.effectiveFrom ? 'Дата окончания не может быть раньше даты начала.' : ''); }} required aria-invalid={Boolean(endDateError)} aria-describedby={endDateError ? 'rate-end-error' : undefined} />{endDateError && <small id="rate-end-error" className="validation-message" role="alert">{endDateError}</small>}</label><div className="dialog-actions"><button className="primary" disabled={submitting}>Установить дату</button></div></form>}</Modal></section>;
+}
+
+function ChargeEditForm({ charge, draft, setDraft, onConfirm }) {
+  const change = (field) => (event) => setDraft({ ...draft, [field]: field === 'amount' ? Number(event.target.value) : event.target.value });
+  return <form onSubmit={(event) => { event.preventDefault(); onConfirm(); }}><label>Сумма, ₸<input name="amount" type="number" min={Math.max(1, charge.allocated)} value={draft.amount} onChange={change('amount')} required /></label><label>Дата<input name="chargedAt" type="date" value={draft.chargedAt} onChange={change('chargedAt')} required /></label><label>Описание<input name="description" value={draft.description} onChange={change('description')} required /></label><p className="muted">Уже распределено: {money(charge.allocated)}.</p><div className="dialog-actions"><button className="primary">Сохранить начисление</button></div></form>;
+}
+
+function AllocationForm({ payment, outstanding, paymentRemaining, allocate, close, submitting }) {
+  const available = paymentRemaining(payment); const first = outstanding[0];
+  const [chargeId, setChargeId] = useState(() => first?.id ? String(first.id) : ''); const [amount, setAmount] = useState(() => first ? String(Math.min(available, first.amount - first.allocated)) : ''); const [error, setError] = useState('');
+  useEffect(() => { setChargeId(first?.id ? String(first.id) : ''); setAmount(first ? String(Math.min(available, first.amount - first.allocated)) : ''); setError(''); }, [payment.id, first?.id, first?.amount, first?.allocated, available]);
+  const selectCharge = (event) => { const id = event.target.value; const charge = outstanding.find((item) => item.id === Number(id)); setChargeId(id); setAmount(charge ? String(Math.min(available, charge.amount - charge.allocated)) : ''); setError(''); };
+  async function submit(event) { event.preventDefault(); const charge = outstanding.find((item) => item.id === Number(chargeId)); const value = Number(amount); const limit = charge ? Math.min(available, charge.amount - charge.allocated) : 0; if (!charge || !value || value > limit) { setError('Сумма не должна превышать остаток оплаты и выбранного начисления.'); return; } const ok = await allocate(payment.id, charge.id, value); if (ok) close(); }
+  return <form onSubmit={submit}><p className="muted">Доступно для распределения: {money(available)}.</p><label>Начисление <span className="required">*</span><select name="chargeId" value={chargeId} onChange={selectCharge} required>{outstanding.map((charge) => <option key={charge.id} value={charge.id}>{charge.description} · осталось {money(charge.amount - charge.allocated)}</option>)}</select></label><label>Сумма распределения, ₸ <span className="required">*</span><input name="amount" type="number" min="1" value={amount} onChange={(event) => { setAmount(event.target.value); setError(''); }} aria-invalid={Boolean(error)} aria-describedby={error ? 'existing-allocation-error' : undefined} required />{error && <small id="existing-allocation-error" className="validation-message" role="alert">{error}</small>}</label><div className="dialog-actions"><button className="primary" disabled={submitting}>Распределить оплату</button></div></form>;
+}
+
+function Ledger({ personBalances, subscriptions, personId, balance, submitting, selectPerson, showPeople, addCharge, saveCharge, addPayment, allocatePayment }) {
+  const [chargeDialog, setChargeDialog] = useState(false); const [paymentDialog, setPaymentDialog] = useState(false); const [allocationPayment, setAllocationPayment] = useState(null); const [editingCharge, setEditingCharge] = useState(null); const [editDraft, setEditDraft] = useState(null); const [confirming, setConfirming] = useState(false); const [allocationError, setAllocationError] = useState('');
+  useLayoutEffect(() => { setAllocationError(''); }, [paymentDialog]);
+  const person = personBalances.find((entry) => entry.personId === personId); const charges = balance?.charges || []; const payments = balance?.payments || []; const outstanding = charges.filter((charge) => charge.amount > charge.allocated);
+  const paymentRemaining = (payment) => payment.amount - payment.allocations.reduce((sum, allocation) => sum + allocation.amount, 0);
+  const openEdit = (charge) => { setEditingCharge(charge); setEditDraft({ amount: charge.amount, chargedAt: charge.chargedAt, description: charge.description }); };
+  const cancelEdit = () => { setConfirming(false); setEditingCharge(null); setEditDraft(null); };
+  async function chargeSubmit(event) { const ok = await addCharge(event, person.personId); if (ok) setChargeDialog(false); }
+  async function paymentSubmit(event) { event.preventDefault(); const form = new FormData(event.currentTarget); const amount = Number(form.get('amount')); const allocationAmount = Number(form.get('allocationAmount')); const charge = outstanding.find((item) => item.id === Number(form.get('chargeId'))); if (form.get('chargeId') && (!allocationAmount || allocationAmount > amount || !charge || allocationAmount > charge.amount - charge.allocated)) { setAllocationError('Сумма распределения не должна превышать сумму оплаты и остаток начисления.'); return; } const ok = await addPayment(event, person.personId); if (ok) setPaymentDialog(false); }
+  async function confirmEdit() { const ok = await saveCharge(editingCharge, person.personId, editDraft); if (ok) cancelEdit(); }
+  const details = !balance ? <p className="muted" role="status">Загрузка баланса…</p> : <div className="ledger"><section className="ledger-person-header"><div><h2>{person?.fullName}</h2><p className="muted">Журнал начислений и оплат</p></div></section><section className="balance-summary"><div><span className="muted">Начислено</span><strong>{money(balance.charged)}</strong></div><div><span className="muted">Оплачено</span><strong>{money(balance.paid)}</strong></div><div><span className="muted">Баланс</span><strong className={balanceClass(balance.balance)} aria-label={balanceLabel(balance.balance)}>{signedBalance(balance.balance)}</strong></div></section><section><div className="line"><h2>Операции</h2><div className="button-group"><button className="primary" onClick={() => setChargeDialog(true)}>Добавить начисление</button><button className="primary" onClick={() => setPaymentDialog(true)}>Зарегистрировать оплату</button></div></div></section><div className="grid"><section className="card"><h2>Начисления</h2>{charges.length ? <ul className="list">{charges.map((charge) => { const remaining = Math.max(0, charge.amount - charge.allocated); return <li key={charge.id}><button className="ledger-item" onClick={() => openEdit(charge)}><div className="line"><strong>{charge.description}</strong><span>{money(charge.amount)}</span></div><small className="muted">{formatDate(charge.chargedAt)} · {chargeLabels[charge.type]} · распределено {money(charge.allocated)}</small><small className={`charge-payment-status ${remaining === 0 ? 'paid' : 'unpaid'}`}>{remaining === 0 ? 'Оплачено полностью' : 'Не оплачено полностью'} · осталось распределить: {money(remaining)}</small></button></li>; })}</ul> : <p className="muted">Начислений пока нет.</p>}</section><section className="card"><h2>Оплаты</h2>{payments.length ? <ul className="list">{payments.map((payment) => <li key={payment.id}><div className="line"><strong>{money(payment.amount)}</strong><span className="muted">{methodLabels[payment.method]}</span></div><small className="muted">{formatDate(payment.paidAt)}{payment.note ? ` · ${payment.note}` : ''}</small>{payment.allocations.map((allocation) => <small className="allocation" key={allocation.id}>Распределено: {allocation.chargeDescription} · {money(allocation.amount)}</small>)}{paymentRemaining(payment) > 0 && <div className="payment-remaining"><small className="muted">Не распределено: {money(paymentRemaining(payment))}</small><button onClick={() => setAllocationPayment(payment)}>Распределить</button></div>}</li>)}</ul> : <p className="muted">Оплат пока нет.</p>}</section></div><Modal open={chargeDialog} onClose={() => setChargeDialog(false)} title="Ручное начисление"><form onSubmit={chargeSubmit}><label>Сумма, ₸ <span className="required">*</span><input name="amount" type="number" min="1" required /></label><label>Дата <span className="required">*</span><input name="chargedAt" type="date" defaultValue={today()} required /></label><label>Описание <span className="required">*</span><input name="description" maxLength="1000" required /></label><label>Абонемент<select name="subscriptionId" defaultValue=""><option value="">Без привязки</option>{subscriptions.filter((subscription) => subscription.members.some((member) => member.personId === person.personId)).map((subscription) => <option key={subscription.id} value={subscription.id}>{subscription.title || `Абонемент #${subscription.id}`}</option>)}</select></label><div className="dialog-actions"><button className="primary" disabled={submitting}>Начислить</button></div></form></Modal><Modal open={paymentDialog} onClose={() => setPaymentDialog(false)} title="Зарегистрировать оплату"><form onSubmit={paymentSubmit}><p className="muted">Оплата и распределение сохраняются одной операцией.</p><label>Сумма, ₸ <span className="required">*</span><input name="amount" type="number" min="1" required /></label><label>Дата оплаты <span className="required">*</span><input name="paidAt" type="date" defaultValue={today()} required /></label><label>Способ оплаты<select name="method" defaultValue="CASH">{Object.entries(methodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>Заметка<input name="note" maxLength="1000" /></label><label>Распределить на начисление<select name="chargeId" defaultValue=""><option value="">Не распределять</option>{outstanding.map((charge) => <option key={charge.id} value={charge.id}>{charge.description} · осталось {money(charge.amount - charge.allocated)}</option>)}</select></label><label>Сумма распределения, ₸<input name="allocationAmount" type="number" min="1" aria-invalid={Boolean(allocationError)} aria-describedby={allocationError ? 'payment-allocation-error' : undefined} onChange={() => setAllocationError('')} />{allocationError && <small id="payment-allocation-error" className="validation-message" role="alert">{allocationError}</small>}</label><div className="dialog-actions"><button className="primary" disabled={submitting}>Зарегистрировать</button></div></form></Modal><Modal open={Boolean(allocationPayment)} onClose={() => setAllocationPayment(null)} title="Распределить полученную оплату">{allocationPayment && <AllocationForm payment={allocationPayment} outstanding={outstanding} paymentRemaining={paymentRemaining} allocate={allocatePayment} close={() => setAllocationPayment(null)} submitting={submitting} />}</Modal><Modal open={Boolean(editingCharge) && !confirming} onClose={cancelEdit} title="Изменить начисление">{editingCharge && editDraft && <ChargeEditForm charge={editingCharge} draft={editDraft} setDraft={setEditDraft} onConfirm={() => setConfirming(true)} />}</Modal><Modal open={confirming} onClose={() => setConfirming(false)} title="Подтвердить изменение начисления">{editDraft && <><p>Это нестандартная ручная операция. Проверьте значения перед сохранением.</p><dl className="confirmation-summary"><div><dt>Сумма</dt><dd>{money(editDraft.amount)}</dd></div><div><dt>Дата</dt><dd>{formatDate(editDraft.chargedAt)}</dd></div><div><dt>Описание</dt><dd>{editDraft.description}</dd></div></dl><div className="dialog-actions"><button onClick={() => setConfirming(false)} disabled={submitting}>Отмена</button><button className="primary" onClick={confirmEdit} disabled={submitting}>Подтвердить изменение</button></div></>}</Modal></div>;
+  return <><section className="card"><div className="line"><h2>Каякеры и балансы</h2><span className="muted">{personBalances.length}</span></div><div className="balance-table-wrap"><table className="balance-table"><thead><tr><th>Каякер</th><th>Начислено</th><th>Оплачено</th><th>Баланс</th></tr></thead><tbody>{personBalances.map((entry) => <tr key={entry.personId}><td><button className="person-balance-button" onClick={() => selectPerson(entry.personId)}>{entry.fullName}<small>{entry.active ? 'активен' : 'неактивен'}</small></button></td><td>{money(entry.charged)}</td><td>{money(entry.paid)}</td><td className={balanceClass(entry.balance)} aria-label={balanceLabel(entry.balance)}>{signedBalance(entry.balance)}</td></tr>)}</tbody></table></div></section><Modal open={Boolean(personId)} onClose={showPeople} title={person ? `Начисления и оплаты · ${person.fullName}` : 'Начисления и оплаты'}>{details}</Modal></>;
+}
+
+function PasswordSettings({ onSubmit, submitting }) {
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => { const dialog = [...document.querySelectorAll('.modal-dialog')].find((item) => item.querySelector('h2')?.textContent === 'Сменить пароль'); dialog?.querySelector('form')?.reset(); }, [open]);
+  return <section className="card"><h2>Пароль</h2><p className="muted">Пароль не хранится в браузере.</p><button className="primary" onClick={() => setOpen(true)}>Сменить пароль</button><Modal open={open} onClose={() => setOpen(false)} title="Сменить пароль"><form onSubmit={async (event) => { const ok = await onSubmit(event); if (ok) setOpen(false); }}><label>Текущий пароль<input name="currentPassword" type="password" autoComplete="current-password" required /></label><label>Новый пароль<input name="newPassword" type="password" minLength="8" maxLength="72" autoComplete="new-password" required /></label><div className="dialog-actions"><button className="primary" disabled={submitting}>Обновить пароль</button></div></form></Modal></section>;
+}
+
+function useInlineValidation() { useEffect(() => { let sequence = 0; const invalid = (event) => { const field = event.target; if (!(field instanceof HTMLInputElement || field instanceof HTMLSelectElement)) return; const id = field.dataset.validationId || `validation-${++sequence}`; field.dataset.validationId = id; let note = document.getElementById(id); if (!note) { note = document.createElement('small'); note.id = id; note.className = 'validation-message'; field.insertAdjacentElement('afterend', note); } note.textContent = field.type === 'number' ? 'Введите целое число больше нуля.' : field.type === 'date' ? 'Выберите корректную дату.' : 'Заполните это обязательное поле.'; field.setAttribute('aria-invalid', 'true'); field.setAttribute('aria-describedby', id); }; const input = (event) => { const field = event.target; if (!field.dataset.validationId || !field.validity.valid) return; document.getElementById(field.dataset.validationId)?.remove(); field.removeAttribute('aria-invalid'); field.removeAttribute('aria-describedby'); }; document.addEventListener('invalid', invalid, true); document.addEventListener('input', input, true); return () => { document.removeEventListener('invalid', invalid, true); document.removeEventListener('input', input, true); }; }, []); }
 
 export default function App() {
-  const [authorization, setAuthorization] = useState(null);
-  const [user, setUser] = useState('admin');
-  const [tab, setTab] = useState('overview');
-  const [people, setPeople] = useState([]);
-  const [subscriptions, setSubscriptions] = useState([]);
-  const [rates, setRates] = useState([]);
-  const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const api = createApi(authorization, () => setAuthorization(null));
-  async function load() {
-    setLoading(true);
-    setError('');
-    try {
-      const [loadedPeople, loadedSubscriptions, loadedRates] = await Promise.all([api('/api/people'), api('/api/subscriptions'), api('/api/pricing-rates')]);
-      setPeople(loadedPeople);
-      setSubscriptions(loadedSubscriptions);
-      setRates(loadedRates);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
+  const [authorization, setAuthorization] = useState(null); const [user, setUser] = useState('admin'); const [tab, setTab] = useState('overview'); const [people, setPeople] = useState([]); const [personBalances, setPersonBalances] = useState([]); const [subscriptions, setSubscriptions] = useState([]); const [rates, setRates] = useState([]); const [personId, setPersonId] = useState(null); const [balance, setBalance] = useState(null); const [error, setError] = useState(''); const [message, setMessage] = useState(''); const [loading, setLoading] = useState(false); const [submitting, setSubmitting] = useState(false); const lock = useRef(false); const selectedPersonRef = useRef(null); const balanceRequestVersion = useRef(0); const api = useMemo(() => createApi(authorization, () => setAuthorization(null)), [authorization]);
+  useInlineValidation();
+  const refreshBalances = async () => setPersonBalances(await api('/api/people/balances'));
+  const load = async () => { setLoading(true); try { const [nextPeople, nextBalances, nextSubscriptions, nextRates] = await Promise.all([api('/api/people'), api('/api/people/balances'), api('/api/subscriptions'), api('/api/pricing-rates')]); setPeople(nextPeople); setPersonBalances(nextBalances); setSubscriptions(nextSubscriptions); setRates(nextRates); } catch (requestError) { setError(requestError.message); } finally { setLoading(false); } };
   useEffect(() => { if (authorization) load(); }, [authorization]);
-  if (!authorization) return <Login onLogin={(newAuthorization, login) => { setAuthorization(newAuthorization); setUser(login); }} />;
-
-  async function addPerson(event) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    try {
-      await api('/api/people', { method: 'POST', body: JSON.stringify({ fullName: form.get('fullName'), phone: form.get('phone') || null, note: null }) });
-      event.currentTarget.reset();
-      await load();
-    } catch (requestError) {
-      setError(requestError.message);
-    }
-  }
-
-  async function changePassword(event) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const newPassword = form.get('newPassword');
-    try {
-      await api('/api/account/password', { method: 'PUT', body: JSON.stringify({ currentPassword: form.get('currentPassword'), newPassword }) });
-      setAuthorization(basicAuth(user, newPassword));
-      setMessage('Пароль обновлён. Он не сохраняется в браузере.');
-      event.currentTarget.reset();
-    } catch (requestError) {
-      setError(requestError.message);
-    }
-  }
-
-  const tabs = {
-    overview: <Overview people={people} subscriptions={subscriptions} rates={rates} />,
-    people: <People people={people} onAdd={addPerson} />,
-    subscriptions: <Subscriptions subscriptions={subscriptions} />,
-    rates: <Rates rates={rates} />,
-    password: <PasswordForm onSubmit={changePassword} />
-  };
-
-  return (
-    <main className="shell">
-      <header className="topbar"><div><h1>Kayak Bookkeeper</h1><span className="muted">Управление клубом</span></div><div><span className="muted">{user} · </span><button onClick={() => setAuthorization(null)}>Выйти</button></div></header>
-      <nav className="tabs">{[['overview', 'Обзор'], ['people', 'Каякеры'], ['subscriptions', 'Абонементы'], ['rates', 'Тарифы'], ['password', 'Пароль']].map(([id, title]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{title}</button>)}</nav>
-      <div className="spacer" />
-      {error && <p className="notice">{error}</p>}
-      {message && <p className="notice success">{message}</p>}
-      {loading ? <p className="muted">Загрузка…</p> : tabs[tab]}
-    </main>
-  );
+  const run = async (action, success) => { if (lock.current) return false; lock.current = true; setSubmitting(true); setError(''); try { await action(); setMessage(success); return true; } catch (requestError) { setError(requestError.message); return false; } finally { lock.current = false; setSubmitting(false); } };
+  const submit = async (form, action, success) => { const ok = await run(action, success); if (ok) form.reset(); return ok; };
+  const loadBalance = async (id) => { const version = ++balanceRequestVersion.current; if (selectedPersonRef.current !== id) return; setBalance(null); if (!id) return; try { const next = await api(`/api/people/${id}/balance`); if (version === balanceRequestVersion.current && selectedPersonRef.current === id) setBalance(next); } catch (requestError) { if (version === balanceRequestVersion.current && selectedPersonRef.current === id) setError(requestError.message); } };
+  if (!authorization) return <Login onLogin={(nextAuthorization, login) => { setAuthorization(nextAuthorization); setUser(login); }} />;
+  const addPerson = (event) => { event.preventDefault(); const target = event.currentTarget; const form = new FormData(target); return submit(target, async () => { await api('/api/people', { method: 'POST', body: JSON.stringify({ fullName: form.get('fullName'), phone: form.get('phone') || null, note: null }) }); await load(); }, 'Каякер добавлен.'); };
+  const updatePerson = (event, person) => { event.preventDefault(); const target = event.currentTarget; const form = new FormData(target); return submit(target, async () => { await api(`/api/people/${person.id}`, { method: 'PUT', body: JSON.stringify({ fullName: form.get('fullName'), phone: form.get('phone') || null, note: form.get('note') || null, active: form.get('active') === 'on' }) }); await load(); }, 'Карточка каякера обновлена.'); };
+  const createRate = (event) => { event.preventDefault(); const target = event.currentTarget; const form = new FormData(target); return submit(target, async () => { await api('/api/pricing-rates', { method: 'POST', body: JSON.stringify({ code: form.get('code'), amount: Number(form.get('amount')), effectiveFrom: form.get('effectiveFrom'), effectiveTo: form.get('effectiveTo') || null }) }); await load(); }, 'Тариф добавлен.'); };
+  const endRate = (event, rate) => { event.preventDefault(); const target = event.currentTarget; const form = new FormData(target); return submit(target, async () => { await api(`/api/pricing-rates/${rate.id}/effective-to`, { method: 'PUT', body: JSON.stringify({ effectiveTo: form.get('effectiveTo') }) }); await load(); }, 'Дата окончания тарифа установлена.'); };
+  const createSubscription = (event, members) => { event.preventDefault(); const target = event.currentTarget; const form = new FormData(target); return submit(target, async () => { await api('/api/subscriptions/recurring-with-members', { method: 'POST', body: JSON.stringify({ dayOfWeek: form.get('dayOfWeek'), startTime: form.get('startTime'), startDate: form.get('startDate'), sessionCount: Number(form.get('sessionCount')), capacity: Number(form.get('capacity')), title: form.get('title') || null, description: form.get('description') || null, members: Object.entries(members).map(([id, equipment]) => ({ personId: Number(id), usesSkirt: equipment.skirt, usesPaddle: equipment.paddle, usesKayak: equipment.kayak })) }) }); await load(); }, 'Абонемент создан.'); };
+  const updateSubscription = (event, subscription) => { event.preventDefault(); const target = event.currentTarget; const form = new FormData(target); return submit(target, async () => { await api(`/api/subscriptions/${subscription.id}/metadata`, { method: 'PUT', body: JSON.stringify({ title: form.get('title') || null, description: form.get('description') || null }) }); await load(); }, 'Карточка абонемента обновлена.'); };
+  const finalize = (subscription) => run(async () => { await api(`/api/subscriptions/${subscription.id}/finalize`, { method: 'POST' }); await load(); }, 'Абонемент рассчитан, начисления созданы.');
+  const complete = (subscription) => run(async () => { await api(`/api/subscriptions/${subscription.id}/complete`, { method: 'POST' }); await load(); }, 'Абонемент завершён.');
+  const addCharge = (event, id) => { event.preventDefault(); const target = event.currentTarget; const form = new FormData(target); return submit(target, async () => { await api('/api/charges', { method: 'POST', body: JSON.stringify({ personId: id, amount: Number(form.get('amount')), chargedAt: form.get('chargedAt'), description: form.get('description'), subscriptionId: form.get('subscriptionId') ? Number(form.get('subscriptionId')) : null }) }); await Promise.all([loadBalance(id), refreshBalances()]); }, 'Начисление добавлено.'); };
+  const saveCharge = (charge, id, values) => run(async () => { await api(`/api/charges/${charge.id}`, { method: 'PUT', body: JSON.stringify(values) }); await Promise.all([loadBalance(id), refreshBalances()]); }, 'Начисление обновлено.');
+  const addPayment = (event, id) => { event.preventDefault(); const target = event.currentTarget; const form = new FormData(target); return submit(target, async () => { await api('/api/payments/with-allocation', { method: 'POST', body: JSON.stringify({ personId: id, amount: Number(form.get('amount')), paidAt: form.get('paidAt'), method: form.get('method'), note: form.get('note') || null, chargeId: form.get('chargeId') ? Number(form.get('chargeId')) : null, allocationAmount: form.get('allocationAmount') ? Number(form.get('allocationAmount')) : null }) }); await Promise.all([loadBalance(id), refreshBalances()]); }, 'Оплата зарегистрирована.'); };
+  const allocatePayment = (paymentId, chargeId, amount) => run(async () => { await api(`/api/payments/${paymentId}/allocations`, { method: 'POST', body: JSON.stringify({ chargeId, amount }) }); await Promise.all([loadBalance(personId), refreshBalances()]); }, 'Оплата распределена.');
+  const changePassword = (event) => { event.preventDefault(); const target = event.currentTarget; const form = new FormData(target); const newPassword = form.get('newPassword'); return submit(target, async () => { await api('/api/account/password', { method: 'PUT', body: JSON.stringify({ currentPassword: form.get('currentPassword'), newPassword }) }); setAuthorization(basicAuth(user, newPassword)); }, 'Пароль обновлён. Он не сохраняется в браузере.'); };
+  const selectPerson = (id) => { selectedPersonRef.current = id; setPersonId(id); loadBalance(id); };
+  const content = { overview: <Overview people={people} subscriptions={subscriptions} rates={rates} go={setTab} />, people: <People people={people} onAdd={addPerson} onUpdate={updatePerson} submitting={submitting} />, subscriptions: <Subscriptions people={people} subscriptions={subscriptions} create={createSubscription} update={updateSubscription} finalize={finalize} complete={complete} submitting={submitting} />, rates: <Rates rates={rates} create={createRate} end={endRate} submitting={submitting} />, ledger: <Ledger personBalances={personBalances} subscriptions={subscriptions} personId={personId} balance={balance} submitting={submitting} selectPerson={selectPerson} showPeople={() => { selectedPersonRef.current = null; balanceRequestVersion.current += 1; setPersonId(null); setBalance(null); }} addCharge={addCharge} saveCharge={saveCharge} addPayment={addPayment} allocatePayment={allocatePayment} />, password: <PasswordSettings onSubmit={changePassword} submitting={submitting} /> };
+  return <main className="shell"><header className="topbar"><div><h1>Kayak Bookkeeper</h1><span className="muted">Управление клубом</span></div><div><span className="muted">{user} · </span><button onClick={() => setAuthorization(null)}>Выйти</button></div></header><nav className="tabs" aria-label="Разделы приложения">{[['overview', 'Обзор'], ['people', 'Каякеры'], ['subscriptions', 'Абонементы'], ['rates', 'Тарифы'], ['ledger', 'Начисления и оплаты'], ['password', 'Пароль']].map(([id, title]) => <button key={id} className={tab === id ? 'active' : ''} aria-current={tab === id ? 'page' : undefined} onClick={() => setTab(id)}>{title}</button>)}</nav><div className="spacer" />{error && <p className="notice" role="alert">{error}</p>}{message && <p className="notice success" role="status">{message}</p>}{loading ? <p className="muted" role="status">Загрузка…</p> : content[tab]}</main>;
 }
