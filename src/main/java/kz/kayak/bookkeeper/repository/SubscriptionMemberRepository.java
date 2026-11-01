@@ -1,6 +1,7 @@
 package kz.kayak.bookkeeper.repository;
 import kz.kayak.bookkeeper.domain.*;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.util.*;
@@ -10,4 +11,6 @@ public interface SubscriptionMemberRepository extends JpaRepository<Subscription
     List<SubscriptionMember> findBySubscriptionInWithSubscriptionAndPerson(@Param("subscriptions") Collection<Subscription> subscriptions);
     Optional<SubscriptionMember> findBySubscriptionAndPerson(Subscription subscription, Person person);
     long countBySubscription(Subscription subscription);
+    @Modifying(flushAutomatically = true) @Query("delete from SubscriptionMember member where member.subscription = :subscription")
+    void deleteBySubscription(@Param("subscription") Subscription subscription);
 }

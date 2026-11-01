@@ -29,6 +29,39 @@ class SubscriptionCreationApiTest {
   Api.SubscriptionView updated = service.getSubscription(subscription.id());
   assertThat(updated.status()).isEqualTo(subscription.status());
  }
+ @Test void replacesDraftScheduleAndMembersAtomically() throws Exception {
+  Api.PersonView alia=service.createPerson(new Api.PersonRequest("Алия",null,null));
+  Api.PersonView ivan=service.createPerson(new Api.PersonRequest("Иван",null,null));
+  Api.SubscriptionView subscription=service.createRecurringSubscriptionWithMembers(new Api.RecurringSubscriptionWithMembersRequest(java.time.DayOfWeek.TUESDAY,java.time.LocalTime.of(19,0),java.time.LocalDate.of(2026,11,10),2,2,"Старый","Старое",List.of(new Api.MemberRequest(alia.id(),false,false,false))));
+  String body=String.format("{\"startsAt\":[\"2026-11-24T20:00:00\",\"2026-11-17T18:30:00\"],\"members\":[{\"personId\":%d,\"usesSkirt\":true,\"usesPaddle\":false,\"usesKayak\":true},{\"personId\":%d,\"usesSkirt\":false,\"usesPaddle\":true,\"usesKayak\":false}],\"title\":\"Новый\",\"description\":\"Новое описание\"}",ivan.id(),alia.id());
+  mockMvc.perform(put("/api/subscriptions/{id}/draft",subscription.id()).header(HttpHeaders.AUTHORIZATION,ADMIN_AUTHORIZATION).contentType(MediaType.APPLICATION_JSON).content(body))
+    .andExpect(status().isOk()).andExpect(jsonPath("$.title").value("Новый")).andExpect(jsonPath("$.sessions.length()").value(2)).andExpect(jsonPath("$.sessions[0].startsAt").value("2026-11-17T18:30:00")).andExpect(jsonPath("$.members.length()").value(2)).andExpect(jsonPath("$.members[0].personName").value("Иван")).andExpect(jsonPath("$.members[0].usesSkirt").value(true)).andExpect(jsonPath("$.members[1].usesPaddle").value(true));
+  Api.SubscriptionView updated=service.getSubscription(subscription.id());
+  assertThat(updated.status()).isEqualTo(kz.kayak.bookkeeper.domain.SubscriptionStatus.DRAFT);
+  assertThat(updated.sessions()).extracting(Api.SessionView::startsAt).containsExactly(LocalDateTime.of(2026,11,17,18,30),LocalDateTime.of(2026,11,24,20,0));
+ }
+ @Test void rejectsDraftReplacementAfterSubscriptionIsFinalized() throws Exception {
+  Api.PersonView person=service.createPerson(new Api.PersonRequest("Алия",null,null));
+  service.createRate(new Api.RateRequest(kz.kayak.bookkeeper.domain.RateCode.POOL_RENTAL,100,java.time.LocalDate.of(2026,11,1),null));
+  Api.SubscriptionView subscription=service.createRecurringSubscriptionWithMembers(new Api.RecurringSubscriptionWithMembersRequest(java.time.DayOfWeek.TUESDAY,java.time.LocalTime.of(19,0),java.time.LocalDate.of(2026,11,10),1,1,"Ноябрь",null,List.of(new Api.MemberRequest(person.id(),false,false,false))));
+  service.finalizeSubscription(subscription.id());
+  mockMvc.perform(put("/api/subscriptions/{id}/draft",subscription.id()).header(HttpHeaders.AUTHORIZATION,ADMIN_AUTHORIZATION).contentType(MediaType.APPLICATION_JSON).content(String.format("{\"startsAt\":[\"2026-11-17T19:00:00\"],\"members\":[{\"personId\":%d}],\"title\":\"Ноябрь\"}",person.id())))
+    .andExpect(status().isConflict());
+ }
+ @Test void rejectsInvalidDraftScheduleAndMembersBeforeReplacingExistingData() throws Exception {
+  Api.PersonView alia=service.createPerson(new Api.PersonRequest("Алия",null,null));
+  Api.PersonView ivan=service.createPerson(new Api.PersonRequest("Иван",null,null));
+  Api.PersonView inactive=service.createPerson(new Api.PersonRequest("Юлия",null,null));
+  service.updatePerson(inactive.id(),new Api.PersonUpdateRequest("Юлия",null,null,false));
+  Api.SubscriptionView subscription=service.createRecurringSubscriptionWithMembers(new Api.RecurringSubscriptionWithMembersRequest(java.time.DayOfWeek.TUESDAY,java.time.LocalTime.of(19,0),java.time.LocalDate.of(2026,11,10),1,1,"Ноябрь",null,List.of(new Api.MemberRequest(alia.id(),false,false,false))));
+  mockMvc.perform(put("/api/subscriptions/{id}/draft",subscription.id()).header(HttpHeaders.AUTHORIZATION,ADMIN_AUTHORIZATION).contentType(MediaType.APPLICATION_JSON).content(String.format("{\"startsAt\":[\"2026-11-17T19:00:00\",\"2026-11-17T19:00:00\"],\"members\":[{\"personId\":%d}]}",alia.id()))).andExpect(status().isConflict());
+  mockMvc.perform(put("/api/subscriptions/{id}/draft",subscription.id()).header(HttpHeaders.AUTHORIZATION,ADMIN_AUTHORIZATION).contentType(MediaType.APPLICATION_JSON).content(String.format("{\"startsAt\":[\"2026-11-17T19:00:00\"],\"members\":[{\"personId\":%d},{\"personId\":%d}]}",alia.id(),alia.id()))).andExpect(status().isConflict());
+  mockMvc.perform(put("/api/subscriptions/{id}/draft",subscription.id()).header(HttpHeaders.AUTHORIZATION,ADMIN_AUTHORIZATION).contentType(MediaType.APPLICATION_JSON).content(String.format("{\"startsAt\":[\"2026-11-17T19:00:00\"],\"members\":[{\"personId\":%d},{\"personId\":%d}]}",alia.id(),ivan.id()))).andExpect(status().isConflict());
+  mockMvc.perform(put("/api/subscriptions/{id}/draft",subscription.id()).header(HttpHeaders.AUTHORIZATION,ADMIN_AUTHORIZATION).contentType(MediaType.APPLICATION_JSON).content(String.format("{\"startsAt\":[\"2026-11-17T19:00:00\"],\"members\":[{\"personId\":%d}]}",inactive.id()))).andExpect(status().isConflict());
+  Api.SubscriptionView unchanged=service.getSubscription(subscription.id());
+  assertThat(unchanged.sessions()).extracting(Api.SessionView::startsAt).containsExactly(LocalDateTime.of(2026,11,10,19,0));
+  assertThat(unchanged.members()).extracting(Api.MemberView::personId).containsExactly(alia.id());
+ }
  @Test void listsCompleteSubscriptionsInCreationOrder() throws Exception {
   Api.SubscriptionView first=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(LocalDateTime.of(2026,11,17,19,0)),null,"Первый","Описание первого"));
   Api.SubscriptionView second=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(LocalDateTime.of(2026,11,10,19,0),LocalDateTime.of(2026,11,24,19,0)),3,"Второй","Описание второго"));

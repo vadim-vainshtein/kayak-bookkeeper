@@ -40,6 +40,11 @@ public final class Api {
     @Schema(description = "Редактирование названия и описания абонемента. Не изменяет расписание, участников, вместимость или зафиксированные начисления.")
     public record SubscriptionMetadataUpdateRequest(@Schema(description = "Необязательное название", example = "Ноябрь, вторник") @Size(max = 255) String title,
                                                     @Schema(description = "Необязательное описание") @Size(max = 1000) String description) { }
+    @Schema(description = "Полная замена расписания и состава участников черновика абонемента")
+    public record DraftSubscriptionUpdateRequest(@NotEmpty List<@NotNull LocalDateTime> startsAt,
+                                                 @NotEmpty @Size(max = 8) List<@jakarta.validation.Valid MemberRequest> members,
+                                                 @Size(max = 255) String title,
+                                                 @Size(max = 1000) String description) { }
     @Schema(description = "Абонемент с еженедельным расписанием")
     public record RecurringSubscriptionRequest(@NotNull DayOfWeek dayOfWeek, @NotNull LocalTime startTime,
                                                @Schema(description = "Дата начала расчёта; при совпадении с dayOfWeek включается в список", example = "2026-11-10") @NotNull LocalDate startDate,

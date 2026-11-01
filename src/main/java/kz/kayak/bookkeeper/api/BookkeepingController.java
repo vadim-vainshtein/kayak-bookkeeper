@@ -55,6 +55,9 @@ public class BookkeepingController {
     @Operation(summary = "Изменить название и описание абонемента", description = "Доступно при любом статусе. Расписание, состав участников, вместимость и рассчитанные начисления не изменяются.")
     @ApiResponse(responseCode = "404", description = "Абонемент не найден")
     @PutMapping("/subscriptions/{id}/metadata") public Api.SubscriptionView updateSubscriptionMetadata(@Parameter(description = "Идентификатор абонемента") @PathVariable long id, @Valid @RequestBody Api.SubscriptionMetadataUpdateRequest body) { return service.updateSubscriptionMetadata(id, body); }
+    @Operation(summary = "Изменить расписание и состав черновика абонемента", description = "Заменяет все даты тренировок и участников одной транзакцией. Доступно только до расчёта абонемента.")
+    @ApiResponse(responseCode = "409", description = "Абонемент уже рассчитан или данные черновика некорректны")
+    @PutMapping("/subscriptions/{id}/draft") public Api.SubscriptionView updateDraftSubscription(@Parameter(description = "Идентификатор абонемента") @PathVariable long id, @Valid @RequestBody Api.DraftSubscriptionUpdateRequest body) { return service.updateDraftSubscription(id, body); }
     @Operation(summary = "Добавить участника в абонемент", description = "Можно добавить не более вместимости абонемента.")
     @ApiResponse(responseCode = "409", description = "Абонемент закрыт или вместимость исчерпана")
     @PostMapping("/subscriptions/{id}/members") @ResponseStatus(HttpStatus.CREATED) public Api.SubscriptionView addMember(@Parameter(description = "Идентификатор абонемента") @PathVariable long id, @Valid @RequestBody Api.MemberRequest body) { return service.addMember(id, body); }
