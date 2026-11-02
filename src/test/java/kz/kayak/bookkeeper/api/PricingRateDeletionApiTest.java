@@ -14,8 +14,10 @@ import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.http.MediaType;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -40,5 +42,15 @@ class PricingRateDeletionApiTest {
         mockMvc.perform(delete("/api/pricing-rates/{id}", 999_999L).header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Pricing rate 999999 was not found"));
+    }
+
+    @Test
+    void createsZeroAmountRate() throws Exception {
+        mockMvc.perform(post("/api/pricing-rates")
+                        .header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"POOL_RENTAL\",\"amount\":0,\"effectiveFrom\":\"2026-01-01\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.amount").value(0));
     }
 }

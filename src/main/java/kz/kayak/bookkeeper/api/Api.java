@@ -25,7 +25,7 @@ public final class Api {
                                         @NotBlank @Size(min = 8, max = 72) @Schema(description = "Новый пароль, от 8 до 72 символов") String newPassword) { }
     @Schema(description = "Тариф за одну тренировку с периодом действия")
     public record RateRequest(@Schema(description = "Вид тарифа", example = "POOL_RENTAL") @NotNull RateCode code,
-                              @Schema(description = "Сумма в тенге", example = "30000") @Positive long amount,
+                              @Schema(description = "Сумма в тенге", example = "30000") @PositiveOrZero long amount,
                               @Schema(description = "Дата начала действия", example = "2026-11-01") @NotNull LocalDate effectiveFrom,
                               @Schema(description = "Дата окончания; null — бессрочно", nullable = true) LocalDate effectiveTo) { }
     public record RateView(Long id, RateCode code, long amount, LocalDate effectiveFrom, LocalDate effectiveTo) { }
@@ -43,8 +43,21 @@ public final class Api {
     @Schema(description = "Полная замена расписания и состава участников черновика абонемента")
     public record DraftSubscriptionUpdateRequest(@NotEmpty List<@NotNull LocalDateTime> startsAt,
                                                  @NotEmpty @Size(max = 8) List<@jakarta.validation.Valid MemberRequest> members,
+                                                 @Min(1) @Max(8) Integer capacity,
                                                  @Size(max = 255) String title,
                                                  @Size(max = 1000) String description) { }
+    @Schema(description = "Полное редактирование рассчитанного, но ещё не завершённого абонемента")
+    public record FinalizedSubscriptionUpdateRequest(@NotEmpty List<@NotNull LocalDateTime> startsAt,
+                                                     @NotEmpty @Size(max = 8) List<@jakarta.validation.Valid MemberRequest> members,
+                                                     @NotNull @Min(1) @Max(8) Integer capacity,
+                                                     @Size(max = 255) String title,
+                                                     @Size(max = 1000) String description,
+                                                     @Schema(description = "Подтверждает изменение начислений с уже распределёнными оплатами") boolean confirmAllocatedPayments) { }
+    @Schema(description = "Распределённая оплата, которую затрагивает редактирование рассчитанного абонемента")
+    public record AllocatedPaymentWarningView(Long paymentId, LocalDate paidAt, long paymentAmount, long allocatedAmount,
+                                              Long chargeId, String chargeDescription) { }
+    public record FinalizedSubscriptionEditPreviewView(boolean requiresConfirmation,
+                                                       List<AllocatedPaymentWarningView> allocatedPayments) { }
     @Schema(description = "Абонемент с еженедельным расписанием")
     public record RecurringSubscriptionRequest(@NotNull DayOfWeek dayOfWeek, @NotNull LocalTime startTime,
                                                @Schema(description = "Дата начала расчёта; при совпадении с dayOfWeek включается в список", example = "2026-11-10") @NotNull LocalDate startDate,

@@ -35,6 +35,22 @@ textarea { resize: vertical; }
 .form-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .status { display: inline-block; border-radius: 99px; padding: 2px 7px; background: #e4f3eb; color: #145a42; font-size: 12px; white-space: nowrap; }
 .plain-list { margin: 0 0 16px; padding-left: 20px; }
+.session-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; }
+.attendance-panel { display: grid; gap: 16px; max-width: 760px; }
+.attendance-panel > button { justify-self: start; }
+.attendance-heading h2 { margin: 0; }
+.attendance-heading p { margin: 4px 0 0; }
+.attendance-summary { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 12px; border-radius: 8px; background: #f4f7f5; }
+.roster-error { display: grid; gap: 10px; justify-items: start; padding: 12px; border-radius: 8px; background: #fff1ee; color: #9a2f1f; }
+.roster-error p { margin: 0; }
+.attendance-list { list-style: none; padding: 0; margin: 0; border-top: 1px solid #edf0ee; }
+.attendance-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid #edf0ee; }
+.attendance-row > small { grid-column: 1 / -1; }
+.attendance-check { display: inline-flex; align-items: center; gap: 8px; margin: 0; white-space: nowrap; }
+.attendance-check input { width: 20px; height: 20px; }
+.attendance-save { display: grid; justify-items: start; gap: 6px; }
+.drop-in-panel { padding-top: 16px; border-top: 1px solid #edf0ee; }
+.drop-in-panel h3 { margin-top: 0; }
 .member-picker { padding: 10px; border: 1px solid #cfd8d3; border-radius: 8px; }
 .member-picker legend { padding: 0 4px; font-size: 13px; color: #52605b; }
 .schedule-editor { padding: 10px; border: 1px solid #cfd8d3; border-radius: 8px; }
@@ -96,4 +112,4 @@ textarea { resize: vertical; }
 .spacer { height: 18px; }
 @media (prefers-reduced-motion: reduce) { .loading-spinner { animation: none; border-right-color: currentColor; opacity: .55; } }
 @media (max-width: 700px) { .ledger-actions { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .topbar { align-items: flex-start; flex-direction: column; } .shell { padding-top: 20px; } .balance-summary, .form-columns, .compact-form, .schedule-row { grid-template-columns: 1fr; } .compact-form button { justify-self: start; } .modal-dialog { width: calc(100% - 20px); max-height: calc(100vh - 20px); padding: 18px; } .modal-header { align-items: center; } .dialog-actions { justify-content: stretch; } .dialog-actions button { flex: 1; } }
+@media (max-width: 560px) { .topbar { align-items: flex-start; flex-direction: column; } .shell { padding-top: 20px; } .balance-summary, .form-columns, .compact-form, .schedule-row { grid-template-columns: 1fr; } .compact-form button { justify-self: start; } .modal-dialog { width: calc(100% - 20px); max-height: calc(100vh - 20px); padding: 18px; } .modal-header { align-items: center; } .dialog-actions { justify-content: stretch; } .dialog-actions button { flex: 1; } .attendance-row { grid-template-columns: 1fr; } .attendance-check { justify-self: start; } }

@@ -58,6 +58,11 @@ public class BookkeepingController {
     @Operation(summary = "Изменить расписание и состав черновика абонемента", description = "Заменяет все даты тренировок и участников одной транзакцией. Доступно только до расчёта абонемента.")
     @ApiResponse(responseCode = "409", description = "Абонемент уже рассчитан или данные черновика некорректны")
     @PutMapping("/subscriptions/{id}/draft") public Api.SubscriptionView updateDraftSubscription(@Parameter(description = "Идентификатор абонемента") @PathVariable long id, @Valid @RequestBody Api.DraftSubscriptionUpdateRequest body) { return service.updateDraftSubscription(id, body); }
+    @Operation(summary = "Проверить влияние полного редактирования рассчитанного абонемента", description = "Возвращает распределённые оплаты, которые будут затронуты пересчётом. Данные не изменяет.")
+    @PostMapping("/subscriptions/{id}/finalized-edit-preview") public Api.FinalizedSubscriptionEditPreviewView previewFinalizedSubscriptionEdit(@Parameter(description = "Идентификатор абонемента") @PathVariable long id, @Valid @RequestBody Api.FinalizedSubscriptionUpdateRequest body) { return service.previewFinalizedSubscriptionEdit(id, body); }
+    @Operation(summary = "Полностью изменить рассчитанный абонемент", description = "Изменяет расписание, участников, вместимость и метаданные. При затронутых распределённых оплатах требует явного подтверждения.")
+    @ApiResponse(responseCode = "409", description = "Нужно подтвердить затронутые распределённые оплаты либо абонемент уже завершён")
+    @PutMapping("/subscriptions/{id}/finalized") public Api.SubscriptionView updateFinalizedSubscription(@Parameter(description = "Идентификатор абонемента") @PathVariable long id, @Valid @RequestBody Api.FinalizedSubscriptionUpdateRequest body) { return service.updateFinalizedSubscription(id, body); }
     @Operation(summary = "Добавить участника в абонемент", description = "Можно добавить не более вместимости абонемента.")
     @ApiResponse(responseCode = "409", description = "Абонемент закрыт или вместимость исчерпана")
     @PostMapping("/subscriptions/{id}/members") @ResponseStatus(HttpStatus.CREATED) public Api.SubscriptionView addMember(@Parameter(description = "Идентификатор абонемента") @PathVariable long id, @Valid @RequestBody Api.MemberRequest body) { return service.addMember(id, body); }

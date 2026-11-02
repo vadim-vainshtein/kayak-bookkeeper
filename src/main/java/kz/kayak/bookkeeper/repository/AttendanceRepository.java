@@ -6,4 +6,5 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
     Optional<Attendance> findByTrainingSessionAndPerson(TrainingSession session, Person person);
     long countByTrainingSessionAndTypeAndStatus(TrainingSession session, AttendanceType type, AttendanceStatus status);
     List<Attendance> findByTrainingSessionOrderByTypeAscPersonFullNameAsc(TrainingSession session);
+    boolean existsByTrainingSessionSubscription(Subscription subscription);
 }

@@ -83,7 +83,7 @@ public class BookkeepingService {
         long poolShare=ss.stream().mapToLong(x->ceilDiv(applicableAmount(RateCode.POOL_RENTAL,x.getStartsAt().toLocalDate()),group.size())).sum(); s.finalizeWith(poolRentalTotal); LocalDate chargedAt=ss.getFirst().getStartsAt().toLocalDate();
         for(SubscriptionMember member:group) {
             long skirt=member.isUsesSkirt()?sumRate(ss,RateCode.SKIRT_RENTAL):0, paddle=member.isUsesPaddle()?sumRate(ss,RateCode.PADDLE_RENTAL):0, kayak=member.isUsesKayak()?sumRate(ss,RateCode.KAYAK_RENTAL):0;
-            member.snapshotFees(poolShare,skirt,paddle,kayak); charges.save(new Charge(member.getPerson(),s,null,ChargeType.POOL_SHARE,poolShare,chargedAt,"Доля аренды бассейна за абонемент"));
+            member.snapshotFees(poolShare,skirt,paddle,kayak); if(poolShare>0) charges.save(new Charge(member.getPerson(),s,null,ChargeType.POOL_SHARE,poolShare,chargedAt,"Доля аренды бассейна за абонемент"));
             if(skirt>0) charges.save(new Charge(member.getPerson(),s,null,ChargeType.SKIRT_RENT,skirt,chargedAt,"Аренда юбки за абонемент"));
             if(paddle>0) charges.save(new Charge(member.getPerson(),s,null,ChargeType.PADDLE_RENT,paddle,chargedAt,"Аренда весла за абонемент"));
             if(kayak>0) charges.save(new Charge(member.getPerson(),s,null,ChargeType.KAYAK_RENT,kayak,chargedAt,"Аренда каяка за абонемент"));
@@ -102,12 +102,35 @@ public class BookkeepingService {
     @Transactional public Api.SubscriptionView updateDraftSubscription(long id, Api.DraftSubscriptionUpdateRequest r) {
         Subscription subscription=lockedSubscription(id); ensureDraft(subscription);
         if(new HashSet<>(r.startsAt()).size()!=r.startsAt().size()) throw new DomainException("Training dates must be distinct");
-        List<Person> selectedPeople=validateMembers(r.members(), subscription.getCapacity());
+        int capacity=r.capacity()==null ? subscription.getCapacity() : r.capacity();
+        List<Person> selectedPeople=validateMembers(r.members(), capacity);
         members.deleteBySubscription(subscription);
         sessions.deleteBySubscription(subscription);
         subscription.updateMetadata(r.title(), r.description());
+        subscription.updateCapacity(capacity);
         r.startsAt().stream().sorted().forEach(startsAt -> sessions.save(new TrainingSession(subscription, startsAt)));
         for(int index=0; index<r.members().size(); index++) { Api.MemberRequest member=r.members().get(index); members.save(new SubscriptionMember(subscription, selectedPeople.get(index), member.usesSkirt(), member.usesPaddle(), member.usesKayak())); }
+        return subscriptionView(subscription);
+    }
+    @Transactional public Api.FinalizedSubscriptionEditPreviewView previewFinalizedSubscriptionEdit(long id, Api.FinalizedSubscriptionUpdateRequest r) {
+        Subscription subscription=lockedSubscription(id); ensureFinalized(subscription);
+        if (!finalizedStructureChanged(subscription, r)) return new Api.FinalizedSubscriptionEditPreviewView(false, List.of());
+        FinalizedUpdatePlan plan=finalizedUpdatePlan(r);
+        List<Api.AllocatedPaymentWarningView> warnings=allocatedPaymentWarnings(subscription, plan);
+        return new Api.FinalizedSubscriptionEditPreviewView(!warnings.isEmpty(), warnings);
+    }
+    @Transactional public Api.SubscriptionView updateFinalizedSubscription(long id, Api.FinalizedSubscriptionUpdateRequest r) {
+        Subscription subscription=lockedSubscription(id); ensureFinalized(subscription);
+        if (!finalizedStructureChanged(subscription, r)) {
+            if (r.members().size()>r.capacity()) throw new DomainException("Subscription capacity has been reached");
+            subscription.updateMetadata(r.title(), r.description()); subscription.updateCapacity(r.capacity());
+            return subscriptionView(subscription);
+        }
+        if (attendance.existsByTrainingSessionSubscription(subscription)) throw new DomainException("Cannot change schedule or members after attendance has been recorded");
+        FinalizedUpdatePlan plan=finalizedUpdatePlan(r);
+        List<Api.AllocatedPaymentWarningView> warnings=allocatedPaymentWarnings(subscription, plan);
+        if (!warnings.isEmpty() && !r.confirmAllocatedPayments()) throw new DomainException("Allocated payments would be affected; review them and confirm the edit");
+        applyFinalizedUpdate(subscription, r, plan);
         return subscriptionView(subscription);
     }
     @Transactional public Api.AttendanceView markSubscriptionAttendance(long id,Api.AttendanceRequest r) {
@@ -117,7 +140,7 @@ public class BookkeepingService {
     }
     @Transactional public Api.AttendanceView addDropIn(long id,Api.DropInRequest r) {
         TrainingSession session=get(sessions,id,"Training session"); Subscription s=lockedSubscription(session.getSubscription().getId()); if(s.getStatus()!=SubscriptionStatus.FINALIZED) throw new DomainException("Finalize subscription before admitting drop-in visitors"); Person p=get(people,r.personId(),"Person"); if(attendance.findByTrainingSessionAndPerson(session,p).isPresent()) throw new DomainException("Person already has attendance for this session"); if(dropInsConsumeAllAbsences(session)) throw new DomainException("No marked absence has released a place for a drop-in visitor");
-        Attendance entry=attendance.save(new Attendance(session,p,null,AttendanceType.DROP_IN,AttendanceStatus.PRESENT)); LocalDate date=session.getStartsAt().toLocalDate(); charges.save(new Charge(p,s,entry,ChargeType.DROP_IN,applicableAmount(RateCode.DROP_IN,date),date,"Разовая тренировка")); return attendanceView(entry);
+        Attendance entry=attendance.save(new Attendance(session,p,null,AttendanceType.DROP_IN,AttendanceStatus.PRESENT)); LocalDate date=session.getStartsAt().toLocalDate(); long amount=applicableAmount(RateCode.DROP_IN,date); if(amount>0) charges.save(new Charge(p,s,entry,ChargeType.DROP_IN,amount,date,"Разовая тренировка")); return attendanceView(entry);
     }
     public Api.RosterView roster(long id) {
         TrainingSession session=get(sessions,id,"Training session"); List<Attendance> recorded=attendance.findByTrainingSessionOrderByTypeAscPersonFullNameAsc(session); Map<Long,Attendance> marked=recorded.stream().filter(a->a.getType()==AttendanceType.SUBSCRIPTION).collect(Collectors.toMap(a->a.getPerson().getId(),a->a)); List<Api.AttendanceView> entries=new ArrayList<>();
@@ -140,7 +163,73 @@ public class BookkeepingService {
     private void validateAllocation(Person person, long paymentAmount, Charge charge, long allocationAmount) { if(!person.getId().equals(charge.getPerson().getId())) throw new DomainException("Payment and charge must belong to the same person"); if(allocationAmount>paymentAmount) throw new DomainException("Allocation exceeds payment amount"); if(charges.allocatedFor(charge)+allocationAmount>charge.getAmount()) throw new DomainException("Allocation exceeds charge amount"); }
     private Payment lockedPayment(long id) { return payments.findWithLockById(id).orElseThrow(()->new NoSuchElementException("Payment "+id+" was not found")); }
     private Charge lockedCharge(long id) { return charges.findWithLockById(id).orElseThrow(()->new NoSuchElementException("Charge "+id+" was not found")); }
-    private long sumRate(List<TrainingSession> ss,RateCode c){return ss.stream().mapToLong(s->applicableAmount(c,s.getStartsAt().toLocalDate())).sum();} private boolean dropInsConsumeAllAbsences(TrainingSession s){return visitors(s)>=absences(s);} private long absences(TrainingSession s){return attendance.countByTrainingSessionAndTypeAndStatus(s,AttendanceType.SUBSCRIPTION,AttendanceStatus.ABSENT);} private long visitors(TrainingSession s){return attendance.countByTrainingSessionAndTypeAndStatus(s,AttendanceType.DROP_IN,AttendanceStatus.PRESENT);} private List<TrainingSession> sessionsFor(Subscription s){return sessions.findAll().stream().filter(x->x.getSubscription().getId().equals(s.getId())).sorted(Comparator.comparing(TrainingSession::getStartsAt)).toList();} private void syncEditedAutomaticCharge(Charge c){if(c.getSubscription()==null||c.getType()==ChargeType.MANUAL||c.getType()==ChargeType.DROP_IN)return; SubscriptionMember member=members.findBySubscriptionAndPerson(c.getSubscription(),c.getPerson()).orElseThrow(()->new DomainException("Automatic charge has no subscription member")); member.editAutomaticFee(c.getType(),c.getAmount());} private Subscription lockedSubscription(long id){return subscriptions.findWithLockById(id).orElseThrow(()->new NoSuchElementException("Subscription "+id+" was not found"));} private long applicableAmount(RateCode c,LocalDate d){return rates.applicable(c,d).stream().findFirst().orElseThrow(()->new DomainException("No active "+c+" rate on "+d)).getAmount();} private static boolean overlaps(LocalDate af,LocalDate at,LocalDate bf,LocalDate bt){return(at==null||!at.isBefore(bf))&&(bt==null||!bt.isBefore(af));} private static long ceilDiv(long v,long d){return(v+d-1)/d;} private List<Person> validateMembers(List<Api.MemberRequest> requestedMembers, int capacity){if(requestedMembers.isEmpty()) throw new DomainException("Subscription must have at least one member"); if(requestedMembers.size()>capacity) throw new DomainException("Subscription capacity has been reached"); Set<Long> personIds=new HashSet<>(); List<Person> selectedPeople=new ArrayList<>(); for(Api.MemberRequest member:requestedMembers){if(!personIds.add(member.personId())) throw new DomainException("Person is already in this subscription"); Person person=get(people,member.personId(),"Person"); if(!person.isActive()) throw new DomainException("Inactive person cannot join a subscription"); selectedPeople.add(person);} return selectedPeople;} private void ensureDraft(Subscription s){if(s.getStatus()!=SubscriptionStatus.DRAFT)throw new DomainException("Only a draft subscription can be changed");} private <T>T get(org.springframework.data.jpa.repository.JpaRepository<T,Long> r,long id,String label){return r.findById(id).orElseThrow(()->new NoSuchElementException(label+" "+id+" was not found"));}
+    private record ChargeKey(Long personId, ChargeType type) { }
+    private record MemberSettings(boolean usesSkirt, boolean usesPaddle, boolean usesKayak) { }
+    private record FinalizedUpdatePlan(List<Person> people, Map<ChargeKey, Long> fees, long poolRentalAmount, LocalDate chargedAt) { }
+
+    private FinalizedUpdatePlan finalizedUpdatePlan(Api.FinalizedSubscriptionUpdateRequest request) {
+        if (new HashSet<>(request.startsAt()).size()!=request.startsAt().size()) throw new DomainException("Training dates must be distinct");
+        List<Person> selectedPeople=validateMembers(request.members(), request.capacity());
+        List<LocalDateTime> startsAt=request.startsAt().stream().sorted().toList();
+        long poolRentalAmount=startsAt.stream().mapToLong(value -> applicableAmount(RateCode.POOL_RENTAL, value.toLocalDate())).sum();
+        long poolShare=startsAt.stream().mapToLong(value -> ceilDiv(applicableAmount(RateCode.POOL_RENTAL, value.toLocalDate()), selectedPeople.size())).sum();
+        Map<ChargeKey, Long> fees=new HashMap<>();
+        for (int index=0; index<request.members().size(); index++) {
+            Api.MemberRequest member=request.members().get(index); Long personId=selectedPeople.get(index).getId();
+            fees.put(new ChargeKey(personId, ChargeType.POOL_SHARE), poolShare);
+            fees.put(new ChargeKey(personId, ChargeType.SKIRT_RENT), member.usesSkirt() ? sumRateAt(startsAt, RateCode.SKIRT_RENTAL) : 0);
+            fees.put(new ChargeKey(personId, ChargeType.PADDLE_RENT), member.usesPaddle() ? sumRateAt(startsAt, RateCode.PADDLE_RENTAL) : 0);
+            fees.put(new ChargeKey(personId, ChargeType.KAYAK_RENT), member.usesKayak() ? sumRateAt(startsAt, RateCode.KAYAK_RENTAL) : 0);
+        }
+        return new FinalizedUpdatePlan(selectedPeople, fees, poolRentalAmount, startsAt.getFirst().toLocalDate());
+    }
+    private List<Api.AllocatedPaymentWarningView> allocatedPaymentWarnings(Subscription subscription, FinalizedUpdatePlan plan) {
+        List<Charge> affected=charges.findBySubscription(subscription).stream().filter(this::automaticSubscriptionCharge).filter(charge -> automaticChargeWillChange(charge, plan)).toList();
+        if (affected.isEmpty()) return List.of();
+        return allocations.findByChargeIn(affected).stream().map(allocation -> new Api.AllocatedPaymentWarningView(allocation.getPayment().getId(), allocation.getPayment().getPaidAt(), allocation.getPayment().getAmount(), allocation.getAmount(), allocation.getCharge().getId(), allocation.getCharge().getDescription())).toList();
+    }
+    private boolean automaticChargeWillChange(Charge charge, FinalizedUpdatePlan plan) {
+        Long desired=plan.fees().get(new ChargeKey(charge.getPerson().getId(), charge.getType()));
+        if (desired==null || desired==0) return true;
+        long amount=Math.max(desired, charges.allocatedFor(charge));
+        return charge.getAmount()!=amount || !charge.getChargedAt().equals(plan.chargedAt());
+    }
+    private void applyFinalizedUpdate(Subscription subscription, Api.FinalizedSubscriptionUpdateRequest request, FinalizedUpdatePlan plan) {
+        Map<ChargeKey, Long> actualFees=new HashMap<>(); Set<ChargeKey> consumed=new HashSet<>();
+        for (Charge charge : charges.findBySubscription(subscription).stream().filter(this::automaticSubscriptionCharge).toList()) {
+            ChargeKey key=new ChargeKey(charge.getPerson().getId(), charge.getType()); Long desired=consumed.add(key) ? plan.fees().get(key) : null; long allocated=charges.allocatedFor(charge);
+            if (desired==null || desired==0) {
+                if (allocated==0) { charges.delete(charge); continue; }
+                actualFees.put(key, charge.getAmount());
+                continue;
+            }
+            long amount=Math.max(desired, allocated); charge.edit(amount, plan.chargedAt(), charge.getDescription()); actualFees.put(key, amount);
+        }
+        for (Map.Entry<ChargeKey, Long> entry : plan.fees().entrySet()) {
+            if (entry.getValue()==0 || actualFees.containsKey(entry.getKey())) continue;
+            ChargeKey key=entry.getKey(); charges.save(new Charge(get(people, key.personId(), "Person"), subscription, null, key.type(), entry.getValue(), plan.chargedAt(), automaticChargeDescription(key.type()))); actualFees.put(key, entry.getValue());
+        }
+        sessions.deleteBySubscription(subscription); members.deleteBySubscription(subscription);
+        subscription.updateMetadata(request.title(), request.description()); subscription.updateCapacity(request.capacity()); subscription.updatePoolRentalAmount(plan.poolRentalAmount());
+        request.startsAt().stream().sorted().forEach(startsAt -> sessions.save(new TrainingSession(subscription, startsAt)));
+        for (int index=0; index<request.members().size(); index++) {
+            Api.MemberRequest member=request.members().get(index); Person person=plan.people().get(index); SubscriptionMember saved=members.save(new SubscriptionMember(subscription, person, member.usesSkirt(), member.usesPaddle(), member.usesKayak()));
+            saved.snapshotFees(actualFees.getOrDefault(new ChargeKey(person.getId(), ChargeType.POOL_SHARE), 0L), actualFees.getOrDefault(new ChargeKey(person.getId(), ChargeType.SKIRT_RENT), 0L), actualFees.getOrDefault(new ChargeKey(person.getId(), ChargeType.PADDLE_RENT), 0L), actualFees.getOrDefault(new ChargeKey(person.getId(), ChargeType.KAYAK_RENT), 0L));
+        }
+    }
+    private boolean finalizedStructureChanged(Subscription subscription, Api.FinalizedSubscriptionUpdateRequest request) {
+        Set<LocalDateTime> currentSessions=sessionsFor(subscription).stream().map(TrainingSession::getStartsAt).collect(Collectors.toSet());
+        if (!currentSessions.equals(new HashSet<>(request.startsAt()))) return true;
+        Map<Long, MemberSettings> currentMembers=members.findBySubscription(subscription).stream().collect(Collectors.toMap(member -> member.getPerson().getId(), member -> new MemberSettings(member.isUsesSkirt(), member.isUsesPaddle(), member.isUsesKayak())));
+        Map<Long, MemberSettings> requestedMembers=new HashMap<>();
+        for (Api.MemberRequest member : request.members()) {
+            if (requestedMembers.put(member.personId(), new MemberSettings(member.usesSkirt(), member.usesPaddle(), member.usesKayak()))!=null) return true;
+        }
+        return !currentMembers.equals(requestedMembers);
+    }
+    private boolean automaticSubscriptionCharge(Charge charge) { return charge.getType()!=ChargeType.MANUAL && charge.getType()!=ChargeType.DROP_IN; }
+    private String automaticChargeDescription(ChargeType type) { return switch (type) { case POOL_SHARE -> "Доля аренды бассейна за абонемент"; case SKIRT_RENT -> "Аренда юбки за абонемент"; case PADDLE_RENT -> "Аренда весла за абонемент"; case KAYAK_RENT -> "Аренда каяка за абонемент"; default -> throw new IllegalArgumentException("Charge type does not belong to a subscription member fee"); }; }
+    private long sumRate(List<TrainingSession> ss,RateCode c){return ss.stream().mapToLong(s->applicableAmount(c,s.getStartsAt().toLocalDate())).sum();} private long sumRateAt(List<LocalDateTime> startsAt, RateCode code) { return startsAt.stream().mapToLong(value -> applicableAmount(code, value.toLocalDate())).sum(); } private boolean dropInsConsumeAllAbsences(TrainingSession s){return visitors(s)>=absences(s);} private long absences(TrainingSession s){return attendance.countByTrainingSessionAndTypeAndStatus(s,AttendanceType.SUBSCRIPTION,AttendanceStatus.ABSENT);} private long visitors(TrainingSession s){return attendance.countByTrainingSessionAndTypeAndStatus(s,AttendanceType.DROP_IN,AttendanceStatus.PRESENT);} private List<TrainingSession> sessionsFor(Subscription s){return sessions.findAll().stream().filter(x->x.getSubscription().getId().equals(s.getId())).sorted(Comparator.comparing(TrainingSession::getStartsAt)).toList();} private void syncEditedAutomaticCharge(Charge c){if(c.getSubscription()==null||c.getType()==ChargeType.MANUAL||c.getType()==ChargeType.DROP_IN)return; members.findBySubscriptionAndPerson(c.getSubscription(),c.getPerson()).ifPresent(member -> member.editAutomaticFee(c.getType(),c.getAmount()));} private Subscription lockedSubscription(long id){return subscriptions.findWithLockById(id).orElseThrow(()->new NoSuchElementException("Subscription "+id+" was not found"));} private void ensureFinalized(Subscription s) { if (s.getStatus()!=SubscriptionStatus.FINALIZED) throw new DomainException("Only a finalized subscription can be fully changed"); } private long applicableAmount(RateCode c,LocalDate d){return rates.applicable(c,d).stream().findFirst().orElseThrow(()->new DomainException("No active "+c+" rate on "+d)).getAmount();} private static boolean overlaps(LocalDate af,LocalDate at,LocalDate bf,LocalDate bt){return(at==null||!at.isBefore(bf))&&(bt==null||!bt.isBefore(af));} private static long ceilDiv(long v,long d){return(v+d-1)/d;} private List<Person> validateMembers(List<Api.MemberRequest> requestedMembers, int capacity){if(requestedMembers.isEmpty()) throw new DomainException("Subscription must have at least one member"); if(requestedMembers.size()>capacity) throw new DomainException("Subscription capacity has been reached"); Set<Long> personIds=new HashSet<>(); List<Person> selectedPeople=new ArrayList<>(); for(Api.MemberRequest member:requestedMembers){if(!personIds.add(member.personId())) throw new DomainException("Person is already in this subscription"); Person person=get(people,member.personId(),"Person"); if(!person.isActive()) throw new DomainException("Inactive person cannot join a subscription"); selectedPeople.add(person);} return selectedPeople;} private void ensureDraft(Subscription s){if(s.getStatus()!=SubscriptionStatus.DRAFT)throw new DomainException("Only a draft subscription can be changed");} private <T>T get(org.springframework.data.jpa.repository.JpaRepository<T,Long> r,long id,String label){return r.findById(id).orElseThrow(()->new NoSuchElementException(label+" "+id+" was not found"));}
     private Api.PersonView personView(Person p) { return new Api.PersonView(p.getId(), p.getFullName(), p.getPhone(), p.getNote(), p.isActive()); }
     private Api.RateView rateView(PricingRate r) { return new Api.RateView(r.getId(), r.getCode(), r.getAmount(), r.getEffectiveFrom(), r.getEffectiveTo()); }
     private Api.MemberView memberView(SubscriptionMember m) { return new Api.MemberView(m.getId(), m.getPerson().getId(), m.getPerson().getFullName(), m.isUsesSkirt(), m.isUsesPaddle(), m.isUsesKayak(), m.getPoolShare(), m.getSkirtFee(), m.getPaddleFee(), m.getKayakFee()); }

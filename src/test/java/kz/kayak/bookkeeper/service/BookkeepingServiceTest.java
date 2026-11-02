@@ -36,6 +36,29 @@ class BookkeepingServiceTest {
         LocalDate d=LocalDate.of(2026,11,10); service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL,30_000,d,d)); service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL,35_000,d.plusWeeks(1),null)); Api.SubscriptionView s=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(d.atTime(19,0),d.plusWeeks(1).atTime(19,0)),8));
         for(int i=0;i<7;i++){Api.PersonView p=service.createPerson(new Api.PersonRequest("P"+i,null,null));service.addMember(s.id(),new Api.MemberRequest(p.id(),false,false,false));} Api.SubscriptionView finalized=service.finalizeSubscription(s.id()); assertThat(finalized.poolRentalAmount()).isEqualTo(65_000); assertThat(finalized.members()).allSatisfy(m->assertThat(m.poolShare()).isEqualTo(9_286));
     }
+    @Test void finalizesWithZeroRateWithoutCreatingZeroAmountCharges() {
+        LocalDate d=LocalDate.of(2026,11,10); service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL,0,d,null)); Api.SubscriptionView s=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(d.atTime(19,0)),1)); Api.PersonView p=service.createPerson(new Api.PersonRequest("Free",null,null)); service.addMember(s.id(),new Api.MemberRequest(p.id(),false,false,false));
+        Api.SubscriptionView finalized=service.finalizeSubscription(s.id());
+        assertThat(finalized.poolRentalAmount()).isZero(); assertThat(finalized.members()).singleElement().satisfies(member->assertThat(member.poolShare()).isZero()); assertThat(service.balance(p.id()).charges()).isEmpty();
+    }
+    @Test void finalizedSubscriptionEditWarnsBeforeChangingAllocatedChargeAndKeepsItsAllocation() {
+        LocalDate d=LocalDate.of(2026,11,10); service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL,100,d,null)); Api.PersonView person=service.createPerson(new Api.PersonRequest("Оплативший",null,null));
+        Api.SubscriptionView subscription=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(d.atTime(19,0)),1)); service.addMember(subscription.id(),new Api.MemberRequest(person.id(),false,false,false)); service.finalizeSubscription(subscription.id());
+        Api.ChargeView charge=service.balance(person.id()).charges().getFirst(); Api.PaymentView payment=service.createPayment(new Api.PaymentRequest(person.id(),80,d,PaymentMethod.CASH,null)); service.allocatePayment(payment.id(),new Api.AllocationRequest(charge.id(),80));
+        Api.FinalizedSubscriptionUpdateRequest change=new Api.FinalizedSubscriptionUpdateRequest(List.of(d.atTime(19,0),d.plusWeeks(1).atTime(19,0)),List.of(new Api.MemberRequest(person.id(),false,false,false)),1,"Изменённый",null,false);
+        Api.FinalizedSubscriptionEditPreviewView preview=service.previewFinalizedSubscriptionEdit(subscription.id(),change);
+        assertThat(preview.requiresConfirmation()).isTrue(); assertThat(preview.allocatedPayments()).singleElement().satisfies(warning -> { assertThat(warning.paymentId()).isEqualTo(payment.id()); assertThat(warning.allocatedAmount()).isEqualTo(80); assertThat(warning.chargeId()).isEqualTo(charge.id()); });
+        assertThatThrownBy(() -> service.updateFinalizedSubscription(subscription.id(),change)).isInstanceOf(DomainException.class);
+        Api.SubscriptionView updated=service.updateFinalizedSubscription(subscription.id(),new Api.FinalizedSubscriptionUpdateRequest(change.startsAt(),change.members(),change.capacity(),change.title(),change.description(),true));
+        assertThat(updated.sessions()).hasSize(2); assertThat(updated.title()).isEqualTo("Изменённый"); assertThat(service.balance(person.id()).charges()).singleElement().satisfies(updatedCharge -> { assertThat(updatedCharge.id()).isEqualTo(charge.id()); assertThat(updatedCharge.amount()).isEqualTo(200); assertThat(updatedCharge.allocated()).isEqualTo(80); });
+    }
+    @Test void finalizedSubscriptionEditDoesNotRequireConfirmationWhenNothingAllocatedIsChanged() {
+        LocalDate d=LocalDate.of(2026,11,10); service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL,100,d,null)); Api.PersonView person=service.createPerson(new Api.PersonRequest("Без оплаты",null,null));
+        Api.SubscriptionView subscription=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(d.atTime(19,0)),1)); service.addMember(subscription.id(),new Api.MemberRequest(person.id(),false,false,false)); service.finalizeSubscription(subscription.id());
+        Api.FinalizedSubscriptionUpdateRequest change=new Api.FinalizedSubscriptionUpdateRequest(List.of(d.plusWeeks(1).atTime(19,0)),List.of(new Api.MemberRequest(person.id(),false,false,false)),1,"Новое название",null,false);
+        assertThat(service.previewFinalizedSubscriptionEdit(subscription.id(),change).requiresConfirmation()).isFalse();
+        assertThat(service.updateFinalizedSubscription(subscription.id(),change).sessions()).extracting(Api.SessionView::startsAt).containsExactly(d.plusWeeks(1).atTime(19,0));
+    }
     @Test void manualChargeCanBeEditedButNotBelowAllocated() {
         Api.PersonView p=service.createPerson(new Api.PersonRequest("Manual",null,null)); Api.ChargeView c=service.createManualCharge(new Api.ManualChargeRequest(p.id(),5_000,LocalDate.of(2026,11,1),"Correction",null)); service.editCharge(c.id(),new Api.ChargeEditRequest(6_000,LocalDate.of(2026,11,2),"Updated")); assertThat(service.balance(p.id()).charged()).isEqualTo(6_000); Api.PaymentView pay=service.createPayment(new Api.PaymentRequest(p.id(),4_000,LocalDate.of(2026,11,2),PaymentMethod.CASH,null)); service.allocatePayment(pay.id(),new Api.AllocationRequest(c.id(),4_000)); assertThatThrownBy(()->service.editCharge(c.id(),new Api.ChargeEditRequest(3_999,LocalDate.of(2026,11,2),"No"))).isInstanceOf(DomainException.class);
     }
