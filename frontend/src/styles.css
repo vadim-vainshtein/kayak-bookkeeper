@@ -75,6 +75,15 @@ textarea { resize: vertical; }
 .balance-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .balance-summary div { display: grid; gap: 4px; }
 .balance-summary strong { font-size: 21px; }
+.reports { display: grid; gap: 16px; }
+.report-period { display: grid; grid-template-columns: minmax(0, 180px) minmax(0, 180px) auto; align-items: end; gap: 10px; max-width: 520px; }
+.report-period button { white-space: nowrap; }
+.report-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.report-summary article { display: grid; gap: 6px; padding: 16px; border: 1px solid #e2e8e5; border-radius: 12px; background: #fff; }
+.report-summary span { color: #66716d; font-size: 13px; }
+.report-summary strong { font-size: 20px; }
+.report-table td small { display: block; margin-top: 3px; color: #66716d; font-weight: 400; }
+.report-filters { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 4px 0 12px; }
 .debt { color: #9a2f1f; }
 .credit { color: #145a42; }
 .loading-indicator { display: inline-flex; align-items: center; min-height: 1em; }
@@ -112,4 +121,4 @@ textarea { resize: vertical; }
 .spacer { height: 18px; }
 @media (prefers-reduced-motion: reduce) { .loading-spinner { animation: none; border-right-color: currentColor; opacity: .55; } }
 @media (max-width: 700px) { .ledger-actions { grid-template-columns: 1fr; } }
-@media (max-width: 560px) { .topbar { align-items: flex-start; flex-direction: column; } .shell { padding-top: 20px; } .balance-summary, .form-columns, .compact-form, .schedule-row { grid-template-columns: 1fr; } .compact-form button { justify-self: start; } .modal-dialog { width: calc(100% - 20px); max-height: calc(100vh - 20px); padding: 18px; } .modal-header { align-items: center; } .dialog-actions { justify-content: stretch; } .dialog-actions button { flex: 1; } .attendance-row { grid-template-columns: 1fr; } .attendance-check { justify-self: start; } }
+@media (max-width: 560px) { .topbar { align-items: flex-start; flex-direction: column; } .shell { padding-top: 20px; } .balance-summary, .form-columns, .compact-form, .schedule-row, .report-period { grid-template-columns: 1fr; } .compact-form button { justify-self: start; } .modal-dialog { width: calc(100% - 20px); max-height: calc(100vh - 20px); padding: 18px; } .modal-header { align-items: center; } .dialog-actions { justify-content: stretch; } .dialog-actions button { flex: 1; } .attendance-row { grid-template-columns: 1fr; } .attendance-check { justify-self: start; } }

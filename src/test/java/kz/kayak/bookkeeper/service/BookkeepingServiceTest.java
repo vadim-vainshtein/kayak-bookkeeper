@@ -76,6 +76,62 @@ class BookkeepingServiceTest {
         Api.ChargeView pool=service.balance(p.id()).charges().stream().filter(c->c.type()==ChargeType.POOL_SHARE).findFirst().orElseThrow(); service.editCharge(pool.id(),new Api.ChargeEditRequest(31_000,d,"Manual pool adjustment"));
         assertThat(service.getSubscription(s.id()).members()).singleElement().satisfies(m->assertThat(m.poolShare()).isEqualTo(31_000)); assertThat(service.balance(p.id()).charges()).filteredOn(c->c.id().equals(pool.id())).singleElement().satisfies(c->assertThat(c.amount()).isEqualTo(31_000));
     }
+    @Test void financialReportSeparatesPeriodFlowsFromEndOfPeriodBalances() {
+        LocalDate from=LocalDate.of(2026,11,1), to=LocalDate.of(2026,11,30); service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL,100,from,null));
+        Api.PersonView debtor=service.createPerson(new Api.PersonRequest("Должник",null,null)); Api.PersonView credit=service.createPerson(new Api.PersonRequest("Переплата",null,null));
+        Api.SubscriptionView subscription=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(from.plusDays(9).atTime(19,0)),1,"Ноябрь",null)); service.addMember(subscription.id(),new Api.MemberRequest(debtor.id(),false,false,false)); service.finalizeSubscription(subscription.id());
+        Api.ChargeView subscriptionCharge=service.balance(debtor.id()).charges().getFirst(); Api.PaymentView paidForSubscription=service.createPayment(new Api.PaymentRequest(debtor.id(),50,from.plusDays(14),PaymentMethod.CASH,null)); service.allocatePayment(paidForSubscription.id(),new Api.AllocationRequest(subscriptionCharge.id(),50));
+        service.createManualCharge(new Api.ManualChargeRequest(credit.id(),100,from.minusDays(1),"Старое начисление",null)); service.createPayment(new Api.PaymentRequest(credit.id(),120,from.plusDays(2),PaymentMethod.TRANSFER,null));
+        Api.FinancialReportView report=service.financialReport(from,to);
+        assertThat(report.summary()).isEqualTo(new Api.FinancialReportSummaryView(100,170,50,20,120,50,100,-50));
+        assertThat(report.subscriptions()).singleElement().satisfies(row -> { assertThat(row.subscriptionId()).isEqualTo(subscription.id()); assertThat(row.chargedInPeriod()).isEqualTo(100); assertThat(row.allocatedPaymentsInPeriod()).isEqualTo(50); assertThat(row.outstandingAtEnd()).isEqualTo(50); });
+        assertThat(report.people()).filteredOn(row -> row.personId().equals(debtor.id())).singleElement().satisfies(row -> { assertThat(row.chargedInPeriod()).isEqualTo(100); assertThat(row.receivedInPeriod()).isEqualTo(50); assertThat(row.balanceAtEnd()).isEqualTo(50); assertThat(row.lastPaymentDate()).isEqualTo(from.plusDays(14)); });
+        assertThat(report.people()).filteredOn(row -> row.personId().equals(credit.id())).singleElement().satisfies(row -> { assertThat(row.chargedInPeriod()).isZero(); assertThat(row.receivedInPeriod()).isEqualTo(120); assertThat(row.balanceAtEnd()).isEqualTo(-20); });
+        assertThatThrownBy(() -> service.financialReport(to, from)).isInstanceOf(DomainException.class);
+    }
+    @Test void financialReportDoesNotBackdateAnAllocationRecordedAfterThePeriod() {
+        LocalDate today=LocalDate.now(), from=today.minusMonths(1).withDayOfMonth(1), to=from.withDayOfMonth(from.lengthOfMonth()), sessionDate=from.plusDays(3);
+        service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL,100,sessionDate,null));
+        Api.PersonView person=service.createPerson(new Api.PersonRequest("Позднее распределение",null,null));
+        Api.SubscriptionView subscription=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(sessionDate.atTime(19,0)),1,"Прошлый месяц",null)); service.addMember(subscription.id(),new Api.MemberRequest(person.id(),false,false,false)); service.finalizeSubscription(subscription.id());
+        Api.ChargeView charge=service.balance(person.id()).charges().getFirst(); Api.PaymentView payment=service.createPayment(new Api.PaymentRequest(person.id(),100,sessionDate,PaymentMethod.CASH,null));
+        service.allocatePayment(payment.id(),new Api.AllocationRequest(charge.id(),100));
+
+        Api.FinancialReportView report=service.financialReport(from,to);
+
+        assertThat(report.summary().unallocatedPaymentsAtEnd()).isEqualTo(100);
+        assertThat(report.subscriptions()).singleElement().satisfies(row -> assertThat(row.outstandingAtEnd()).isEqualTo(100));
+    }
+    @Test void financialReportCanBeLimitedToOneSubscriptionWithoutCountingAnotherAllocation() {
+        LocalDate date=LocalDate.now(); service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL,100,date,null));
+        Api.PersonView person=service.createPerson(new Api.PersonRequest("Два абонемента",null,null));
+        Api.SubscriptionView first=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(date.atTime(18,0)),1,"Первый",null)); service.addMember(first.id(),new Api.MemberRequest(person.id(),false,false,false)); service.finalizeSubscription(first.id());
+        Api.SubscriptionView second=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(date.plusWeeks(1).atTime(18,0)),1,"Второй",null)); service.addMember(second.id(),new Api.MemberRequest(person.id(),false,false,false)); service.finalizeSubscription(second.id());
+        Api.ChargeView firstCharge=service.balance(person.id()).charges().stream().filter(charge -> charge.subscriptionId().equals(first.id())).findFirst().orElseThrow(); Api.ChargeView secondCharge=service.balance(person.id()).charges().stream().filter(charge -> charge.subscriptionId().equals(second.id())).findFirst().orElseThrow();
+        Api.PaymentView payment=service.createPayment(new Api.PaymentRequest(person.id(),100,date,PaymentMethod.CASH,null)); service.allocatePayment(payment.id(),new Api.AllocationRequest(firstCharge.id(),60)); service.allocatePayment(payment.id(),new Api.AllocationRequest(secondCharge.id(),40));
+
+        Api.FinancialReportView report=service.financialReport(date,date,first.id());
+
+        assertThat(report.summary()).isEqualTo(new Api.FinancialReportSummaryView(100,60,40,0,0,60,100,-40));
+        assertThat(report.subscriptions()).singleElement().satisfies(row -> { assertThat(row.subscriptionId()).isEqualTo(first.id()); assertThat(row.allocatedPaymentsInPeriod()).isEqualTo(60); assertThat(row.outstandingAtEnd()).isEqualTo(40); });
+        assertThat(report.people()).singleElement().satisfies(row -> { assertThat(row.personId()).isEqualTo(person.id()); assertThat(row.receivedInPeriod()).isEqualTo(60); assertThat(row.balanceAtEnd()).isEqualTo(40); });
+    }
+    @Test void financialReportCalculatesClubProfitFromAllocatedFundsAndFixedPoolCost() {
+        LocalDate date=LocalDate.now(); service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL,100,date,null));
+        Api.PersonView firstMember=service.createPerson(new Api.PersonRequest("Первый",null,null)); Api.PersonView secondMember=service.createPerson(new Api.PersonRequest("Второй",null,null)); Api.PersonView thirdMember=service.createPerson(new Api.PersonRequest("Третий",null,null)); Api.PersonView otherMember=service.createPerson(new Api.PersonRequest("Другой",null,null));
+        Api.SubscriptionView first=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(date.atTime(18,0)),3,"Трое",null)); service.addMember(first.id(),new Api.MemberRequest(firstMember.id(),false,false,false)); service.addMember(first.id(),new Api.MemberRequest(secondMember.id(),false,false,false)); service.addMember(first.id(),new Api.MemberRequest(thirdMember.id(),false,false,false)); Api.SubscriptionView finalizedFirst=service.finalizeSubscription(first.id());
+        Api.SubscriptionView second=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(date.atTime(19,0)),1,"Один",null)); service.addMember(second.id(),new Api.MemberRequest(otherMember.id(),false,false,false)); service.finalizeSubscription(second.id());
+        Api.ChargeView firstCharge=service.balance(firstMember.id()).charges().getFirst(); Api.PaymentView firstPayment=service.createPayment(new Api.PaymentRequest(firstMember.id(),34,date,PaymentMethod.CASH,null)); service.allocatePayment(firstPayment.id(),new Api.AllocationRequest(firstCharge.id(),34));
+        Api.ChargeView secondCharge=service.balance(otherMember.id()).charges().getFirst(); Api.PaymentView secondPayment=service.createPayment(new Api.PaymentRequest(otherMember.id(),100,date,PaymentMethod.CASH,null)); service.allocatePayment(secondPayment.id(),new Api.AllocationRequest(secondCharge.id(),100));
+
+        Api.FinancialReportView allSubscriptions=service.financialReport(date,date);
+        Api.FinancialReportView onlyFirst=service.financialReport(date,date,first.id());
+
+        assertThat(finalizedFirst.poolRentalAmount()).isEqualTo(100);
+        assertThat(allSubscriptions.summary()).extracting(Api.FinancialReportSummaryView::allocatedFundsAtEnd, Api.FinancialReportSummaryView::poolRentalCostAtEnd, Api.FinancialReportSummaryView::clubProfitAtEnd).containsExactly(134L,200L,-66L);
+        assertThat(onlyFirst.summary()).extracting(Api.FinancialReportSummaryView::allocatedFundsAtEnd, Api.FinancialReportSummaryView::poolRentalCostAtEnd, Api.FinancialReportSummaryView::clubProfitAtEnd).containsExactly(34L,100L,-66L);
+        assertThat(onlyFirst.subscriptions()).singleElement().satisfies(row -> assertThat(row).extracting(Api.SubscriptionFinancialReportView::allocatedPaymentsAtEnd, Api.SubscriptionFinancialReportView::poolRentalCostAtEnd, Api.SubscriptionFinancialReportView::clubProfitAtEnd).containsExactly(34L,100L,-66L));
+    }
     @Test void rosterAndDropInUseSubscriptionCapacity() {
         LocalDate d=LocalDate.of(2026,11,10); service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL,30_000,d,null));service.createRate(new Api.RateRequest(RateCode.DROP_IN,5_000,d,null)); Api.SubscriptionView s=service.createExplicitSubscription(new Api.ExplicitSubscriptionRequest(List.of(d.atTime(19,0)),1)); Api.PersonView member=service.createPerson(new Api.PersonRequest("Member",null,null)); service.addMember(s.id(),new Api.MemberRequest(member.id(),false,false,false)); long session=service.finalizeSubscription(s.id()).sessions().getFirst().id(); service.markSubscriptionAttendance(session,new Api.AttendanceRequest(member.id(),AttendanceStatus.ABSENT)); Api.PersonView visitor=service.createPerson(new Api.PersonRequest("Visitor",null,null)); service.addDropIn(session,new Api.DropInRequest(visitor.id())); assertThat(service.roster(session).capacity()).isEqualTo(1); assertThat(service.balance(visitor.id()).charged()).isEqualTo(5_000);
     }

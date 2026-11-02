@@ -95,4 +95,22 @@ public final class Api {
     public record ChargeEditRequest(@Positive long amount, @NotNull LocalDate chargedAt, String description) { }
     public record ChargeView(Long id, ChargeType type, long amount, long allocated, LocalDate chargedAt, String description, Long subscriptionId, Long attendanceId) { }
     public record BalanceView(Long personId, long charged, long paid, long balance, List<ChargeView> charges, List<PaymentView> payments) { }
+    @Schema(description = "Сводные показатели финансового отчёта за выбранный период")
+    public record FinancialReportSummaryView(long chargedInPeriod, long receivedInPeriod, long debtAtEnd,
+                                             long creditAtEnd, long unallocatedPaymentsAtEnd,
+                                             long allocatedFundsAtEnd, long poolRentalCostAtEnd,
+                                             long clubProfitAtEnd) { }
+    @Schema(description = "Финансовые показатели одного абонемента")
+    public record SubscriptionFinancialReportView(Long subscriptionId, String title, SubscriptionStatus status,
+                                                  LocalDate firstSessionDate, LocalDate lastSessionDate, int memberCount,
+                                                  long chargedInPeriod, long allocatedPaymentsInPeriod, long outstandingAtEnd,
+                                                  long allocatedPaymentsAtEnd, long poolRentalCostAtEnd,
+                                                  long clubProfitAtEnd) { }
+    @Schema(description = "Финансовые показатели каякера")
+    public record PersonFinancialReportView(Long personId, String fullName, boolean active, long chargedInPeriod,
+                                            long receivedInPeriod, long balanceAtEnd, LocalDate lastPaymentDate) { }
+    @Schema(description = "Финансовый отчёт: начисления учитываются по chargedAt, оплаты — по paidAt; баланс рассчитан на конец периода")
+    public record FinancialReportView(LocalDate from, LocalDate to, FinancialReportSummaryView summary,
+                                      List<SubscriptionFinancialReportView> subscriptions,
+                                      List<PersonFinancialReportView> people) { }
 }

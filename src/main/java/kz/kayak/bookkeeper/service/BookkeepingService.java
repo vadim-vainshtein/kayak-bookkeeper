@@ -30,6 +30,43 @@ public class BookkeepingService {
             return new Api.PersonBalanceSummaryView(person.getId(), person.getFullName(), person.isActive(), charged, paid, charged - paid);
         }).toList();
     }
+    @Transactional public Api.FinancialReportView financialReport(LocalDate from, LocalDate to) { return financialReport(from, to, null); }
+    @Transactional public Api.FinancialReportView financialReport(LocalDate from, LocalDate to, Long subscriptionId) {
+        if (to.isBefore(from)) throw new DomainException("Report end date cannot be before start date");
+        Subscription filteredSubscription=subscriptionId==null ? null : get(subscriptions, subscriptionId, "Subscription");
+        List<Person> allPeople=people.findAll(); List<Charge> allCharges=charges.findAll(); List<Payment> allPayments=payments.findAll(); List<PaymentAllocation> allAllocations=allocations.findAll();
+        List<Charge> reportCharges=filteredSubscription==null ? allCharges : allCharges.stream().filter(charge -> charge.getSubscription()!=null && subscriptionId.equals(charge.getSubscription().getId())).toList();
+        List<PaymentAllocation> reportAllocations=filteredSubscription==null ? allAllocations : allAllocations.stream().filter(allocation -> allocation.getCharge().getSubscription()!=null && subscriptionId.equals(allocation.getCharge().getSubscription().getId())).toList();
+        List<Subscription> reportSubscriptions=filteredSubscription==null ? subscriptions.findAll() : List.of(filteredSubscription);
+        Map<Long, List<SubscriptionMember>> membersBySubscription=reportSubscriptions.isEmpty() ? Map.of() : members.findBySubscriptionInWithSubscriptionAndPerson(reportSubscriptions).stream().collect(Collectors.groupingBy(member -> member.getSubscription().getId()));
+        Set<Long> filteredPersonIds=filteredSubscription==null ? Set.of() : new HashSet<>();
+        if (filteredSubscription!=null) { reportCharges.forEach(charge -> filteredPersonIds.add(charge.getPerson().getId())); membersBySubscription.getOrDefault(filteredSubscription.getId(), List.of()).forEach(member -> filteredPersonIds.add(member.getPerson().getId())); }
+        List<Person> reportPeople=filteredSubscription==null ? allPeople : allPeople.stream().filter(person -> filteredPersonIds.contains(person.getId())).toList();
+        Map<Long, List<Charge>> chargesByPerson=reportCharges.stream().collect(Collectors.groupingBy(charge -> charge.getPerson().getId()));
+        Map<Long, List<Payment>> paymentsByPerson=allPayments.stream().collect(Collectors.groupingBy(payment -> payment.getPerson().getId()));
+        Map<Long, List<PaymentAllocation>> allocationsByPerson=reportAllocations.stream().collect(Collectors.groupingBy(allocation -> allocation.getCharge().getPerson().getId()));
+        Map<Long, Long> allocatedByPaymentAtEnd=allAllocations.stream().filter(allocation -> !allocation.getAllocatedAt().isAfter(to)).collect(Collectors.groupingBy(allocation -> allocation.getPayment().getId(), Collectors.summingLong(PaymentAllocation::getAmount)));
+        long chargedInPeriod=reportCharges.stream().filter(charge -> inPeriod(charge.getChargedAt(), from, to)).mapToLong(Charge::getAmount).sum();
+        long receivedInPeriod=filteredSubscription==null ? allPayments.stream().filter(payment -> inPeriod(payment.getPaidAt(), from, to)).mapToLong(Payment::getAmount).sum() : reportAllocations.stream().filter(allocation -> inPeriod(allocation.getAllocatedAt(), from, to)).mapToLong(PaymentAllocation::getAmount).sum();
+        long unallocatedAtEnd=filteredSubscription==null ? allPayments.stream().filter(payment -> !payment.getPaidAt().isAfter(to)).mapToLong(payment -> payment.getAmount()-allocatedByPaymentAtEnd.getOrDefault(payment.getId(), 0L)).sum() : 0;
+        List<Api.PersonFinancialReportView> personRows=reportPeople.stream().map(person -> filteredSubscription==null ? personReport(person, chargesByPerson.getOrDefault(person.getId(), List.of()), paymentsByPerson.getOrDefault(person.getId(), List.of()), from, to) : subscriptionPersonReport(person, chargesByPerson.getOrDefault(person.getId(), List.of()), allocationsByPerson.getOrDefault(person.getId(), List.of()), from, to)).sorted(Comparator.comparingLong(Api.PersonFinancialReportView::balanceAtEnd).reversed().thenComparing(Api.PersonFinancialReportView::fullName)).toList();
+        long debtAtEnd=personRows.stream().mapToLong(row -> Math.max(0, row.balanceAtEnd())).sum();
+        long creditAtEnd=personRows.stream().mapToLong(row -> Math.max(0, -row.balanceAtEnd())).sum();
+        Map<Long, Long> allocatedInPeriodBySubscription=new HashMap<>(), allocatedThroughEndBySubscription=new HashMap<>();
+        for (PaymentAllocation allocation : reportAllocations) {
+            Charge charge=allocation.getCharge(); Payment payment=allocation.getPayment();
+            if (charge.getSubscription()==null) continue;
+            long allocatedSubscriptionId=charge.getSubscription().getId();
+            if (inPeriod(allocation.getAllocatedAt(), from, to)) allocatedInPeriodBySubscription.merge(allocatedSubscriptionId, allocation.getAmount(), Long::sum);
+            if (!allocation.getAllocatedAt().isAfter(to) && !payment.getPaidAt().isAfter(to) && !charge.getChargedAt().isAfter(to)) allocatedThroughEndBySubscription.merge(allocatedSubscriptionId, allocation.getAmount(), Long::sum);
+        }
+        Map<Long, List<Charge>> chargesBySubscription=reportCharges.stream().filter(charge -> charge.getSubscription()!=null).collect(Collectors.groupingBy(charge -> charge.getSubscription().getId()));
+        Map<Long, List<TrainingSession>> sessionsBySubscription=reportSubscriptions.isEmpty() ? Map.of() : sessions.findBySubscriptionInWithSubscription(reportSubscriptions).stream().collect(Collectors.groupingBy(session -> session.getSubscription().getId()));
+        List<Api.SubscriptionFinancialReportView> subscriptionRows=reportSubscriptions.stream().map(subscription -> subscriptionReport(subscription, chargesBySubscription.getOrDefault(subscription.getId(), List.of()), allocatedInPeriodBySubscription.getOrDefault(subscription.getId(), 0L), allocatedThroughEndBySubscription.getOrDefault(subscription.getId(), 0L), membersBySubscription.getOrDefault(subscription.getId(), List.of()), sessionsBySubscription.getOrDefault(subscription.getId(), List.of()), from, to)).filter(row -> filteredSubscription!=null || row.chargedInPeriod()!=0 || row.outstandingAtEnd()!=0 || overlapsPeriod(row.firstSessionDate(), row.lastSessionDate(), from, to)).sorted(Comparator.comparing(Api.SubscriptionFinancialReportView::firstSessionDate, Comparator.nullsLast(Comparator.reverseOrder())).thenComparing(Api.SubscriptionFinancialReportView::subscriptionId)).toList();
+        long allocatedFundsAtEnd=allocatedThroughEndBySubscription.values().stream().mapToLong(Long::longValue).sum();
+        long poolRentalCostAtEnd=reportSubscriptions.stream().mapToLong(subscription -> poolRentalCostAtEnd(subscription, sessionsBySubscription.getOrDefault(subscription.getId(), List.of()), to)).sum();
+        return new Api.FinancialReportView(from, to, new Api.FinancialReportSummaryView(chargedInPeriod, receivedInPeriod, debtAtEnd, creditAtEnd, unallocatedAtEnd, allocatedFundsAtEnd, poolRentalCostAtEnd, allocatedFundsAtEnd-poolRentalCostAtEnd), subscriptionRows, personRows);
+    }
     @Transactional public Api.PersonView updatePerson(long id, Api.PersonUpdateRequest r) { Person person=get(people,id,"Person"); person.update(r.fullName(),r.phone(),r.note(),r.active()); return personView(person); }
     public Api.RateView createRate(Api.RateRequest r) {
         if (r.effectiveTo()!=null && r.effectiveTo().isBefore(r.effectiveFrom())) throw new DomainException("effectiveTo cannot be before effectiveFrom");
@@ -227,6 +264,37 @@ public class BookkeepingService {
         }
         return !currentMembers.equals(requestedMembers);
     }
+    private Api.PersonFinancialReportView personReport(Person person, List<Charge> personCharges, List<Payment> personPayments, LocalDate from, LocalDate to) {
+        long chargedInPeriod=personCharges.stream().filter(charge -> inPeriod(charge.getChargedAt(), from, to)).mapToLong(Charge::getAmount).sum();
+        long receivedInPeriod=personPayments.stream().filter(payment -> inPeriod(payment.getPaidAt(), from, to)).mapToLong(Payment::getAmount).sum();
+        long chargedThroughEnd=personCharges.stream().filter(charge -> !charge.getChargedAt().isAfter(to)).mapToLong(Charge::getAmount).sum();
+        long paidThroughEnd=personPayments.stream().filter(payment -> !payment.getPaidAt().isAfter(to)).mapToLong(Payment::getAmount).sum();
+        LocalDate lastPayment=personPayments.stream().map(Payment::getPaidAt).filter(date -> !date.isAfter(to)).max(Comparator.naturalOrder()).orElse(null);
+        return new Api.PersonFinancialReportView(person.getId(), person.getFullName(), person.isActive(), chargedInPeriod, receivedInPeriod, chargedThroughEnd-paidThroughEnd, lastPayment);
+    }
+    private Api.PersonFinancialReportView subscriptionPersonReport(Person person, List<Charge> personCharges, List<PaymentAllocation> personAllocations, LocalDate from, LocalDate to) {
+        long chargedInPeriod=personCharges.stream().filter(charge -> inPeriod(charge.getChargedAt(), from, to)).mapToLong(Charge::getAmount).sum();
+        long receivedInPeriod=personAllocations.stream().filter(allocation -> inPeriod(allocation.getAllocatedAt(), from, to)).mapToLong(PaymentAllocation::getAmount).sum();
+        long chargedThroughEnd=personCharges.stream().filter(charge -> !charge.getChargedAt().isAfter(to)).mapToLong(Charge::getAmount).sum();
+        List<PaymentAllocation> allocationsThroughEnd=personAllocations.stream().filter(allocation -> !allocation.getAllocatedAt().isAfter(to) && !allocation.getPayment().getPaidAt().isAfter(to) && !allocation.getCharge().getChargedAt().isAfter(to)).toList();
+        long paidThroughEnd=allocationsThroughEnd.stream().mapToLong(PaymentAllocation::getAmount).sum();
+        LocalDate lastPayment=allocationsThroughEnd.stream().map(allocation -> allocation.getPayment().getPaidAt()).max(Comparator.naturalOrder()).orElse(null);
+        return new Api.PersonFinancialReportView(person.getId(), person.getFullName(), person.isActive(), chargedInPeriod, receivedInPeriod, chargedThroughEnd-paidThroughEnd, lastPayment);
+    }
+    private Api.SubscriptionFinancialReportView subscriptionReport(Subscription subscription, List<Charge> subscriptionCharges, long allocatedInPeriod, long allocatedThroughEnd, List<SubscriptionMember> subscriptionMembers, List<TrainingSession> subscriptionSessions, LocalDate from, LocalDate to) {
+        List<LocalDate> sessionDates=subscriptionSessions.stream().map(session -> session.getStartsAt().toLocalDate()).sorted().toList();
+        LocalDate first=sessionDates.isEmpty() ? null : sessionDates.getFirst(), last=sessionDates.isEmpty() ? null : sessionDates.getLast();
+        long chargedInPeriod=subscriptionCharges.stream().filter(charge -> inPeriod(charge.getChargedAt(), from, to)).mapToLong(Charge::getAmount).sum();
+        long chargedThroughEnd=subscriptionCharges.stream().filter(charge -> !charge.getChargedAt().isAfter(to)).mapToLong(Charge::getAmount).sum();
+        long poolRentalCostAtEnd=poolRentalCostAtEnd(subscription, subscriptionSessions, to);
+        return new Api.SubscriptionFinancialReportView(subscription.getId(), subscription.getTitle(), subscription.getStatus(), first, last, subscriptionMembers.size(), chargedInPeriod, allocatedInPeriod, chargedThroughEnd-allocatedThroughEnd, allocatedThroughEnd, poolRentalCostAtEnd, allocatedThroughEnd-poolRentalCostAtEnd);
+    }
+    private long poolRentalCostAtEnd(Subscription subscription, List<TrainingSession> subscriptionSessions, LocalDate to) {
+        LocalDate firstSessionDate=subscriptionSessions.stream().map(session -> session.getStartsAt().toLocalDate()).min(Comparator.naturalOrder()).orElse(null);
+        return firstSessionDate!=null && !firstSessionDate.isAfter(to) ? Objects.requireNonNullElse(subscription.getPoolRentalAmount(), 0L) : 0L;
+    }
+    private boolean inPeriod(LocalDate value, LocalDate from, LocalDate to) { return !value.isBefore(from) && !value.isAfter(to); }
+    private boolean overlapsPeriod(LocalDate first, LocalDate last, LocalDate from, LocalDate to) { return first!=null && last!=null && !last.isBefore(from) && !first.isAfter(to); }
     private boolean automaticSubscriptionCharge(Charge charge) { return charge.getType()!=ChargeType.MANUAL && charge.getType()!=ChargeType.DROP_IN; }
     private String automaticChargeDescription(ChargeType type) { return switch (type) { case POOL_SHARE -> "Доля аренды бассейна за абонемент"; case SKIRT_RENT -> "Аренда юбки за абонемент"; case PADDLE_RENT -> "Аренда весла за абонемент"; case KAYAK_RENT -> "Аренда каяка за абонемент"; default -> throw new IllegalArgumentException("Charge type does not belong to a subscription member fee"); }; }
     private long sumRate(List<TrainingSession> ss,RateCode c){return ss.stream().mapToLong(s->applicableAmount(c,s.getStartsAt().toLocalDate())).sum();} private long sumRateAt(List<LocalDateTime> startsAt, RateCode code) { return startsAt.stream().mapToLong(value -> applicableAmount(code, value.toLocalDate())).sum(); } private boolean dropInsConsumeAllAbsences(TrainingSession s){return visitors(s)>=absences(s);} private long absences(TrainingSession s){return attendance.countByTrainingSessionAndTypeAndStatus(s,AttendanceType.SUBSCRIPTION,AttendanceStatus.ABSENT);} private long visitors(TrainingSession s){return attendance.countByTrainingSessionAndTypeAndStatus(s,AttendanceType.DROP_IN,AttendanceStatus.PRESENT);} private List<TrainingSession> sessionsFor(Subscription s){return sessions.findAll().stream().filter(x->x.getSubscription().getId().equals(s.getId())).sorted(Comparator.comparing(TrainingSession::getStartsAt)).toList();} private void syncEditedAutomaticCharge(Charge c){if(c.getSubscription()==null||c.getType()==ChargeType.MANUAL||c.getType()==ChargeType.DROP_IN)return; members.findBySubscriptionAndPerson(c.getSubscription(),c.getPerson()).ifPresent(member -> member.editAutomaticFee(c.getType(),c.getAmount()));} private Subscription lockedSubscription(long id){return subscriptions.findWithLockById(id).orElseThrow(()->new NoSuchElementException("Subscription "+id+" was not found"));} private void ensureFinalized(Subscription s) { if (s.getStatus()!=SubscriptionStatus.FINALIZED) throw new DomainException("Only a finalized subscription can be fully changed"); } private long applicableAmount(RateCode c,LocalDate d){return rates.applicable(c,d).stream().findFirst().orElseThrow(()->new DomainException("No active "+c+" rate on "+d)).getAmount();} private static boolean overlaps(LocalDate af,LocalDate at,LocalDate bf,LocalDate bt){return(at==null||!at.isBefore(bf))&&(bt==null||!bt.isBefore(af));} private static long ceilDiv(long v,long d){return(v+d-1)/d;} private List<Person> validateMembers(List<Api.MemberRequest> requestedMembers, int capacity){if(requestedMembers.isEmpty()) throw new DomainException("Subscription must have at least one member"); if(requestedMembers.size()>capacity) throw new DomainException("Subscription capacity has been reached"); Set<Long> personIds=new HashSet<>(); List<Person> selectedPeople=new ArrayList<>(); for(Api.MemberRequest member:requestedMembers){if(!personIds.add(member.personId())) throw new DomainException("Person is already in this subscription"); Person person=get(people,member.personId(),"Person"); if(!person.isActive()) throw new DomainException("Inactive person cannot join a subscription"); selectedPeople.add(person);} return selectedPeople;} private void ensureDraft(Subscription s){if(s.getStatus()!=SubscriptionStatus.DRAFT)throw new DomainException("Only a draft subscription can be changed");} private <T>T get(org.springframework.data.jpa.repository.JpaRepository<T,Long> r,long id,String label){return r.findById(id).orElseThrow(()->new NoSuchElementException(label+" "+id+" was not found"));}
