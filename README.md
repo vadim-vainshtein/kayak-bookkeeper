@@ -2,7 +2,7 @@
 
 Веб-приложение для учёта тренировок, абонементов, начислений и оплат каяк-клуба. Все суммы хранятся целыми тенге.
 
-## Быстрый production-деплой
+## Production-деплой с Caddy
 
 Нужны Docker Engine с Compose plugin, публичный DNS-адрес сервера и открытые входящие порты **80** и **443**. Никакие порты приложения или PostgreSQL наружу не публикуются: HTTPS и сертификат обслуживает Caddy.
 
@@ -31,6 +31,127 @@ curl -I https://<APP_DOMAIN>/
 ```
 
 Проверьте вход с первоначальным паролем, создание тестового каякера и отсутствие внешнего доступа к 5432/8080. Swagger и OpenAPI доступны только аутентифицированному администратору: `/swagger-ui/index.html` и `/v3/api-docs`.
+
+## Production-деплой за существующим Nginx
+
+Этот вариант предназначен для **Nginx, запущенного непосредственно на хосте**. Не запускайте одновременно Caddy из `compose.production.yml` и существующий Nginx: оба процесса занимают порты 80 и 443. В этой схеме Nginx остаётся единственной публичной точкой входа и обслуживает TLS-сертификат, а приложение доступно только локально на `127.0.0.1:8081`.
+
+Для первого запуска используйте отдельный поддомен, например `bookkeeper.example.com`. Это не затрагивает существующее приложение на основном домене. Установка в путь вида `example.com/bookkeeper/` требует дополнительной настройки base path у SPA и не рекомендуется для первого production-развёртывания.
+
+### Предварительные условия
+
+- Docker Engine и Compose plugin установлены на сервере.
+- DNS-запись выбранного поддомена указывает на IP сервера.
+- В Nginx уже подключён действующий TLS-сертификат для поддомена либо настроено его получение и обновление (например, Certbot).
+- В firewall открыты только 80 и 443 для публичного доступа. Порт 8081, PostgreSQL и Docker socket не должны быть доступны извне.
+- Приведённая ниже конфигурация предполагает, что Nginx работает на хосте, а не в Docker-контейнере.
+
+### 1. Подготовить каталог и секреты
+
+```bash
+git clone https://github.com/vadim-vainshtein/kayak-bookkeeper.git
+cd kayak-bookkeeper
+cp .env.example .env
+chmod 600 .env
+```
+
+В `.env` задайте фактические `APP_DOMAIN`, `ACME_EMAIL`, `DB_PASSWORD` и `APP_INITIAL_ADMIN_PASSWORD`. Хотя Caddy в этом варианте не запускается, `APP_DOMAIN` и `ACME_EMAIL` всё равно должны быть заполнены: Compose проверяет обязательные переменные при чтении базового файла. Для двух паролей используйте разные случайные значения длиной не менее 12 символов:
+
+```bash
+openssl rand -base64 32
+```
+
+### 2. Создать локальный Compose override
+
+Создайте на сервере файл `compose.nginx.yml`. Его не нужно коммитить в репозиторий: это host-specific конфигурация.
+
+```yaml
+services:
+  app:
+    ports:
+      - "127.0.0.1:8081:8080"
+
+  # Переводит Caddy в неактивный профиль. Без --profile caddy он не запустится.
+  caddy:
+    profiles: ["caddy"]
+```
+
+Проверьте итоговую конфигурацию до запуска. В выводе у `app` должен быть только `127.0.0.1:8081:8080`; у `postgres` не должно быть секции `ports`.
+
+```bash
+docker compose --env-file .env -f compose.production.yml -f compose.nginx.yml config
+```
+
+### 3. Настроить Nginx
+
+Создайте virtual host, подставив домен и пути к уже выпущенному сертификату. Для Certbot типичные пути — `/etc/letsencrypt/live/<домен>/fullchain.pem` и `privkey.pem`.
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name bookkeeper.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name bookkeeper.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/bookkeeper.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/bookkeeper.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    location / {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+```
+
+Например, сохраните файл как `/etc/nginx/sites-available/kayak-bookkeeper`, включите его по правилам вашей ОС и проверьте конфигурацию:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Не добавляйте Basic Auth в Nginx поверх приложения без отдельной необходимости: приложение уже использует собственную HTTP Basic-аутентификацию для API. Главное требование — Nginx должен принудительно перенаправлять HTTP на HTTPS и передавать приведённые proxy-заголовки.
+
+### 4. Запустить и проверить приложение
+
+```bash
+docker compose --env-file .env -f compose.production.yml -f compose.nginx.yml up -d --build
+docker compose --env-file .env -f compose.production.yml -f compose.nginx.yml ps
+docker compose --env-file .env -f compose.production.yml -f compose.nginx.yml logs --tail=100 app
+
+# С самого сервера: контейнер слушает только loopback.
+curl -I http://127.0.0.1:8081/
+
+# С внешней машины: проверяет DNS, TLS и Nginx.
+curl -I https://bookkeeper.example.com/
+```
+
+После статуса `healthy` откройте `https://bookkeeper.example.com/`, войдите как `admin` с `APP_INITIAL_ADMIN_PASSWORD` и сразу смените первоначальный пароль. Проверьте, что `curl http://<публичный-IP>:8081/` и подключения к 5432 извне недоступны.
+
+### Обновление и откат за Nginx
+
+Перед обновлением создайте и проверьте резервную копию. Во всех командах используйте оба Compose-файла, иначе Caddy снова будет включён.
+
+```bash
+git fetch --tags origin
+git checkout <проверенный-тег-или-коммит>
+docker compose --env-file .env -f compose.production.yml -f compose.nginx.yml up -d --build
+docker compose --env-file .env -f compose.production.yml -f compose.nginx.yml ps
+docker compose --env-file .env -f compose.production.yml -f compose.nginx.yml logs --tail=100 app
+```
+
+Для отката переключитесь на предыдущий проверенный тег и повторите `up -d --build`. Не откатывайте Flyway-миграции вручную: если схема или данные несовместимы, остановите приложение, восстановите проверенную копию базы в отдельную БД и действуйте по процедуре восстановления ниже.
 
 ## Обновление и откат
 
