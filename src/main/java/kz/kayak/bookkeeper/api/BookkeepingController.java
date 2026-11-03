@@ -28,8 +28,8 @@ public class BookkeepingController {
     @GetMapping("/people") public List<Api.PersonView> people() { return service.listPeople(); }
     @Operation(summary = "Получить список каякеров с краткими балансами")
     @GetMapping("/people/balances") public List<Api.PersonBalanceSummaryView> peopleBalances() { return service.listPersonBalances(); }
-    @Operation(summary = "Получить финансовый отчёт по абонементам и каякерам за период", description = "Без subscriptionId оплаты считаются по paidAt. При subscriptionId учитываются начисления выбранного абонемента и распределения на них; остатки — на дату to включительно.")
-    @GetMapping("/reports/financial") public Api.FinancialReportView financialReport(@RequestParam LocalDate from, @RequestParam LocalDate to, @RequestParam(required = false) Long subscriptionId) { return service.financialReport(from, to, subscriptionId); }
+    @Operation(summary = "Получить финансовый отчёт по абонементам", description = "Без subscriptionId возвращает все абонементы; повторяющийся subscriptionId ограничивает отчёт выбранными абонементами. Непривязанные начисления выводятся отдельно.")
+    @GetMapping("/reports/financial") public Api.FinancialReportView financialReport(@RequestParam(required = false) List<Long> subscriptionId) { return service.financialReport(subscriptionId); }
     @Operation(summary = "Изменить карточку каякера", description = "Позволяет изменить контактные данные, заметку и признак активности. Уже существующие абонементы, начисления и платежи сохраняются.")
     @ApiResponse(responseCode = "404", description = "Каякер не найден")
     @PutMapping("/people/{id}") public Api.PersonView updatePerson(@Parameter(description = "Идентификатор каякера") @PathVariable long id, @Valid @RequestBody Api.PersonUpdateRequest body) { return service.updatePerson(id, body); }

@@ -19,7 +19,7 @@ public final class Api {
                                       @Schema(description = "Активен ли каякер; неактивного нельзя добавить в новый абонемент", example = "true") @NotNull Boolean active) { }
     public record PersonView(Long id, String fullName, String phone, String note, boolean active) { }
     @Schema(description = "Краткий баланс каякера для списка")
-    public record PersonBalanceSummaryView(Long personId, String fullName, boolean active, long charged, long paid, long balance) { }
+    public record PersonBalanceSummaryView(Long personId, String fullName, boolean active, long charged, long paid, long unallocated, long balance) { }
     @Schema(description = "Смена пароля текущего пользователя")
     public record PasswordChangeRequest(@NotBlank @Schema(description = "Текущий пароль") String currentPassword,
                                         @NotBlank @Size(min = 8, max = 72) @Schema(description = "Новый пароль, от 8 до 72 символов") String newPassword) { }
@@ -92,25 +92,35 @@ public final class Api {
                                                @Positive Long allocationAmount) { }
     @Schema(description = "Ручное начисление для частного случая")
     public record ManualChargeRequest(@NotNull Long personId, @Positive long amount, @NotNull LocalDate chargedAt, @NotBlank String description, Long subscriptionId) { }
-    public record ChargeEditRequest(@Positive long amount, @NotNull LocalDate chargedAt, String description) { }
+    public record ChargeEditRequest(@Positive long amount, @NotNull LocalDate chargedAt, String description,
+                                    Long subscriptionId, boolean updateSubscription) {
+        public ChargeEditRequest(long amount, LocalDate chargedAt, String description) {
+            this(amount, chargedAt, description, null, false);
+        }
+        public ChargeEditRequest(long amount, LocalDate chargedAt, String description, Long subscriptionId) {
+            this(amount, chargedAt, description, subscriptionId, true);
+        }
+    }
     public record ChargeView(Long id, ChargeType type, long amount, long allocated, LocalDate chargedAt, String description, Long subscriptionId, Long attendanceId) { }
     public record BalanceView(Long personId, long charged, long paid, long balance, List<ChargeView> charges, List<PaymentView> payments) { }
-    @Schema(description = "Сводные показатели финансового отчёта за выбранный период")
-    public record FinancialReportSummaryView(long chargedInPeriod, long receivedInPeriod, long debtAtEnd,
-                                             long creditAtEnd, long unallocatedPaymentsAtEnd,
-                                             long allocatedFundsAtEnd, long poolRentalCostAtEnd,
-                                             long clubProfitAtEnd) { }
+    @Schema(description = "Сводные показатели финансового отчёта по выбранным абонементам за всё время")
+    public record FinancialReportSummaryView(long charged, long allocatedPayments, long outstanding,
+                                             long poolRentalCost, long clubProfit) { }
+    @Schema(description = "Распределение оплаты на начисление абонемента")
+    public record SubscriptionPaymentFinancialReportView(Long paymentId, Long personId, String personName,
+                                                         LocalDate paidAt, PaymentMethod method, String paymentNote,
+                                                         Long chargeId, String chargeDescription, long allocated) { }
     @Schema(description = "Финансовые показатели одного абонемента")
     public record SubscriptionFinancialReportView(Long subscriptionId, String title, SubscriptionStatus status,
-                                                  LocalDate firstSessionDate, LocalDate lastSessionDate, int memberCount,
-                                                  long chargedInPeriod, long allocatedPaymentsInPeriod, long outstandingAtEnd,
-                                                  long allocatedPaymentsAtEnd, long poolRentalCostAtEnd,
-                                                  long clubProfitAtEnd) { }
-    @Schema(description = "Финансовые показатели каякера")
-    public record PersonFinancialReportView(Long personId, String fullName, boolean active, long chargedInPeriod,
-                                            long receivedInPeriod, long balanceAtEnd, LocalDate lastPaymentDate) { }
-    @Schema(description = "Финансовый отчёт: начисления учитываются по chargedAt, оплаты — по paidAt; баланс рассчитан на конец периода")
-    public record FinancialReportView(LocalDate from, LocalDate to, FinancialReportSummaryView summary,
+                                                  int memberCount, long charged, long allocatedPayments,
+                                                  long outstanding, long poolRentalCost, long clubProfit,
+                                                  List<SubscriptionPaymentFinancialReportView> payments) { }
+    @Schema(description = "Начисление, не привязанное к абонементу")
+    public record UnassignedChargeFinancialReportView(Long chargeId, Long personId, String personName,
+                                                       ChargeType type, String description, long amount,
+                                                       long allocated, long outstanding) { }
+    @Schema(description = "Финансовый отчёт по выбранным абонементам за всё время; непривязанные начисления выводятся отдельно")
+    public record FinancialReportView(FinancialReportSummaryView summary,
                                       List<SubscriptionFinancialReportView> subscriptions,
-                                      List<PersonFinancialReportView> people) { }
+                                      List<UnassignedChargeFinancialReportView> unassignedCharges) { }
 }

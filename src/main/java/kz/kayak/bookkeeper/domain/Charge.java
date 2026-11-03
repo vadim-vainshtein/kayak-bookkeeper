@@ -17,5 +17,6 @@ public class Charge {
     public Charge(Person person, Subscription subscription, Attendance attendance, ChargeType type, long amount, LocalDate chargedAt) { this(person, subscription, attendance, type, amount, chargedAt, null); }
     public Charge(Person person, Subscription subscription, Attendance attendance, ChargeType type, long amount, LocalDate chargedAt, String description) { this.person=person; this.subscription=subscription; this.attendance=attendance; this.type=type; this.amount=amount; this.chargedAt=chargedAt; this.description=description; }
     public Long getId() { return id; } public Person getPerson() { return person; } public Subscription getSubscription() { return subscription; } public Attendance getAttendance() { return attendance; } public ChargeType getType() { return type; } public long getAmount() { return amount; } public LocalDate getChargedAt() { return chargedAt; } public String getDescription() { return description; }
-    public void edit(long amount, LocalDate chargedAt, String description) { this.amount=amount; this.chargedAt=chargedAt; this.description=description; }
+    public void edit(long amount, LocalDate chargedAt, String description) { edit(amount, chargedAt, description, subscription); }
+    public void edit(long amount, LocalDate chargedAt, String description, Subscription subscription) { this.amount=amount; this.chargedAt=chargedAt; this.description=description; this.subscription=subscription; }
 }

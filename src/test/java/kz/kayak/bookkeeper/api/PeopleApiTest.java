@@ -67,14 +67,44 @@ class PeopleApiTest {
     void listsPeopleWithTheirBalanceSummaries() throws Exception {
         Api.PersonView person = service.createPerson(new Api.PersonRequest("Алия", null, null));
         service.createManualCharge(new Api.ManualChargeRequest(person.id(), 5_000, java.time.LocalDate.of(2026, 11, 1), "Тренировка", null));
-        service.createPayment(new Api.PaymentRequest(person.id(), 2_000, java.time.LocalDate.of(2026, 11, 2), kz.kayak.bookkeeper.domain.PaymentMethod.CASH, null));
+        Api.ChargeView charge = service.balance(person.id()).charges().getFirst();
+        Api.PaymentView partlyAllocated = service.createPayment(new Api.PaymentRequest(person.id(), 2_000, java.time.LocalDate.of(2026, 11, 2), kz.kayak.bookkeeper.domain.PaymentMethod.CASH, null));
+        service.allocatePayment(partlyAllocated.id(), new Api.AllocationRequest(charge.id(), 1_200));
+        Api.PaymentView fullyAllocated = service.createPayment(new Api.PaymentRequest(person.id(), 500, java.time.LocalDate.of(2026, 11, 3), kz.kayak.bookkeeper.domain.PaymentMethod.CASH, null));
+        service.allocatePayment(fullyAllocated.id(), new Api.AllocationRequest(charge.id(), 500));
 
         mockMvc.perform(get("/api/people/balances").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].personId").value(person.id()))
                 .andExpect(jsonPath("$[0].fullName").value("Алия"))
                 .andExpect(jsonPath("$[0].charged").value(5_000))
-                .andExpect(jsonPath("$[0].paid").value(2_000))
-                .andExpect(jsonPath("$[0].balance").value(3_000));
+                .andExpect(jsonPath("$[0].paid").value(2_500))
+                .andExpect(jsonPath("$[0].unallocated").value(800))
+                .andExpect(jsonPath("$[0].balance").value(2_500));
+    }
+
+    @Test
+    void listsKayakersAlphabeticallyByName() throws Exception {
+        service.createPerson(new Api.PersonRequest("Зоя", null, null));
+        service.createPerson(new Api.PersonRequest("алия", null, null));
+        service.createPerson(new Api.PersonRequest("Алина", null, null));
+        service.createPerson(new Api.PersonRequest("Алия", null, null));
+        service.createPerson(new Api.PersonRequest("Борис", null, null));
+
+        mockMvc.perform(get("/api/people").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].fullName").value("Алина"))
+                .andExpect(jsonPath("$[1].fullName").value("алия"))
+                .andExpect(jsonPath("$[2].fullName").value("Алия"))
+                .andExpect(jsonPath("$[3].fullName").value("Борис"))
+                .andExpect(jsonPath("$[4].fullName").value("Зоя"));
+
+        mockMvc.perform(get("/api/people/balances").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].fullName").value("Алина"))
+                .andExpect(jsonPath("$[1].fullName").value("алия"))
+                .andExpect(jsonPath("$[2].fullName").value("Алия"))
+                .andExpect(jsonPath("$[3].fullName").value("Борис"))
+                .andExpect(jsonPath("$[4].fullName").value("Зоя"));
     }
 }

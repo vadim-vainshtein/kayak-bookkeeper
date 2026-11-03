@@ -76,13 +76,23 @@ textarea { resize: vertical; }
 .balance-summary div { display: grid; gap: 4px; }
 .balance-summary strong { font-size: 21px; }
 .reports { display: grid; gap: 16px; }
-.report-period { display: grid; grid-template-columns: minmax(0, 180px) minmax(0, 180px) auto; align-items: end; gap: 10px; max-width: 520px; }
+.report-period { display: grid; grid-template-columns: minmax(0, 360px) auto; align-items: end; gap: 10px; max-width: 520px; }
 .report-period button { white-space: nowrap; }
+.report-subscription-picker { min-width: 0; border: 1px solid #d4ddd8; border-radius: 8px; padding: 9px 12px; background: #fff; }
+.report-subscription-picker summary { cursor: pointer; color: #40504a; }
+.report-subscription-picker .report-filters { margin: 10px 0 0; }
 .report-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
 .report-summary article { display: grid; gap: 6px; padding: 16px; border: 1px solid #e2e8e5; border-radius: 12px; background: #fff; }
 .report-summary span { color: #66716d; font-size: 13px; }
 .report-summary strong { font-size: 20px; }
 .report-table td small { display: block; margin-top: 3px; color: #66716d; font-weight: 400; }
+.report-subscription-row { cursor: pointer; }
+.report-subscription-row:hover td { background: #f3f8f5; }
+.report-subscription-row:focus-visible { outline: 2px solid #0b6b4d; outline-offset: -2px; }
+.report-payment-details > td { padding: 0 8px 14px; text-align: left; background: #f7faf8; }
+.report-payment-details h3 { margin: 14px 0 0; font-size: 16px; }
+.report-payment-details .balance-table-wrap { margin: 8px 0 0; }
+.report-payment-table { min-width: 520px; }
 .report-filters { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 4px 0 12px; }
 .debt { color: #9a2f1f; }
 .credit { color: #145a42; }
