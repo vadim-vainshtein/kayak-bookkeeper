@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/kayak_bookkeeper}
-    username: ${DB_USER:kayak}
-    password: ${DB_PASSWORD:kayak}
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -10,5 +10,6 @@ spring:
   flyway:
     enabled: true
 server:
+  forward-headers-strategy: framework
   error:
-    include-message: always
+    include-message: never

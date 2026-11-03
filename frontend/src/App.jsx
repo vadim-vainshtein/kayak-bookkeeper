@@ -1598,7 +1598,7 @@ function useInlineValidation() {
 
 export default function App() {
     const [authorization, setAuthorization] = useState(null);
-    const [user, setUser] = useState('admin');
+    const [user, setUser] = useState('');
     const [tab, setTab] = useState('overview');
     const [people, setPeople] = useState([]);
     const [personBalances, setPersonBalances] = useState([]);

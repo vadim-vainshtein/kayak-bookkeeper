@@ -9,3 +9,5 @@ spring:
       ddl-auto: validate
   flyway:
     enabled: true
+app:
+  initial-admin-password: test-admin-password

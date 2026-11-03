@@ -25,13 +25,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 class SecurityApiTest {
-    private static final String ADMIN_AUTHORIZATION = "Basic YWRtaW46YWRtaW4=";
+    private static final String INITIAL_ADMIN_PASSWORD = "test-admin-password";
+    private static final String ADMIN_AUTHORIZATION = "Basic YWRtaW46dGVzdC1hZG1pbi1wYXNzd29yZA==";
 
     @Autowired
     private MockMvc mockMvc;
 
     @Test
-    void protectsApiAndAcceptsDefaultAdmin() throws Exception {
+    void protectsApiAndAcceptsConfiguredInitialAdmin() throws Exception {
         mockMvc.perform(get("/api/people"))
                 .andExpect(status().isUnauthorized());
 
@@ -65,7 +66,7 @@ class SecurityApiTest {
         mockMvc.perform(put("/api/account/password")
                         .header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"admin\",\"newPassword\":\"" + newPassword + "\"}"))
+                        .content("{\"currentPassword\":\"" + INITIAL_ADMIN_PASSWORD + "\",\"newPassword\":\"" + newPassword + "\"}"))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/people").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
@@ -86,7 +87,7 @@ class SecurityApiTest {
         mockMvc.perform(put("/api/account/password")
                         .header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"admin\",\"newPassword\":\"short\"}"))
+                        .content("{\"currentPassword\":\"" + INITIAL_ADMIN_PASSWORD + "\",\"newPassword\":\"short\"}"))
                 .andExpect(status().isBadRequest());
     }
 }

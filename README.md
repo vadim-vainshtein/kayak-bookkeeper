@@ -1,58 +1,104 @@
-# Kayak bookkeeper API
+# Kayak Bookkeeper
 
-API учёта тренировок, абонементов, начислений и оплат каяк-клуба. Все суммы — целые тенге.
+Веб-приложение для учёта тренировок, абонементов, начислений и оплат каяк-клуба. Все суммы хранятся целыми тенге.
 
-Карточка каякера изменяется через `PUT /api/people/{id}`: передайте `fullName`, `phone`, `note` и `active`. Деактивация сохраняет его историю, но не позволяет добавить человека в новый абонемент.
+## Быстрый production-деплой
+
+Нужны Docker Engine с Compose plugin, публичный DNS-адрес сервера и открытые входящие порты **80** и **443**. Никакие порты приложения или PostgreSQL наружу не публикуются: HTTPS и сертификат обслуживает Caddy.
+
+```bash
+git clone https://github.com/<owner>/kayak-bookkeeper.git
+cd kayak-bookkeeper
+cp .env.example .env
+chmod 600 .env
+# Отредактируйте .env: укажите настоящий APP_DOMAIN, ACME_EMAIL и два случайных секрета.
+docker compose --env-file .env -f compose.production.yml up -d --build
+docker compose --env-file .env -f compose.production.yml ps
+```
+
+Для `DB_PASSWORD` и `APP_INITIAL_ADMIN_PASSWORD` используйте разные значения длиной не менее 12 символов; например, сгенерируйте их командой `openssl rand -base64 32`. В `.env.example` эти поля намеренно пустые: Compose откажется запускаться, пока оба секрета не заданы. Файл `.env` **не коммитится** и не должен попадать в резервные копии, тикеты или логи.
+
+После статуса `healthy` откройте `https://<APP_DOMAIN>/`. Логин первого администратора — `admin`, а пароль — значение `APP_INITIAL_ADMIN_PASSWORD`. Сразу после первого входа смените пароль в разделе «Пароль» и храните первоначальный секрет как аварийный до подтверждения смены.
+
+`APP_INITIAL_ADMIN_PASSWORD` нужен только когда в базе ещё нет `admin`; на последующих запусках существующая учётная запись не перезаписывается. При пустой базе без этого секрета приложение завершится с ошибкой, а не создаст известный пароль.
+
+### Проверка после запуска
+
+```bash
+docker compose --env-file .env -f compose.production.yml ps
+docker compose --env-file .env -f compose.production.yml logs --tail=100 app
+curl -I https://<APP_DOMAIN>/
+```
+
+Проверьте вход с первоначальным паролем, создание тестового каякера и отсутствие внешнего доступа к 5432/8080. Swagger и OpenAPI доступны только аутентифицированному администратору: `/swagger-ui/index.html` и `/v3/api-docs`.
+
+## Обновление и откат
+
+Перед каждым обновлением сначала сделайте и проверьте резервную копию, затем сохраните используемый SHA образа/коммита.
+
+```bash
+# Обновление
+git fetch --tags origin
+git checkout v1.0.0                 # замените на проверенный тег
+docker compose --env-file .env -f compose.production.yml up -d --build
+
+# Проверка статуса и журналов
+docker compose --env-file .env -f compose.production.yml ps
+docker compose --env-file .env -f compose.production.yml logs --tail=100 app
+```
+
+Откат приложения допустим только после проверки совместимости схемы с предыдущей версией. Flyway-миграции являются прямыми: не откатывайте их вручную на рабочей базе. Если релиз повредил данные, остановите сервис, восстановите проверенный backup в чистую базу и разверните предыдущий проверенный тег. Сначала отрепетируйте этот сценарий на копии базы.
+
+## Резервное копирование и восстановление
+
+Создавайте резервную копию PostgreSQL в custom-format archive с хоста, на котором доступен Docker:
+
+```bash
+mkdir -p /secure/backups
+docker compose --env-file .env -f compose.production.yml exec -T postgres \
+  pg_dump -U kayak -d kayak_bookkeeper --format=custom \
+  > /secure/backups/kayak_bookkeeper-$(date +%F-%H%M%S).dump
+```
+
+Храните backup вне репозитория, с ограниченным доступом и шифрованием на уровне хранилища. Регулярно проверяйте восстановление на отдельной БД:
+
+```bash
+docker compose --env-file .env -f compose.production.yml exec -T postgres \
+  createdb -U kayak kayak_bookkeeper_restore_check
+cat /secure/backups/<backup>.dump | docker compose --env-file .env -f compose.production.yml exec -T postgres \
+  pg_restore -U kayak -d kayak_bookkeeper_restore_check --clean --if-exists
+```
+
+Перед релизом с Flyway-миграциями восстановите production-копию и прогоните новую версию именно на PostgreSQL. Сверьте число людей, абонементов, начислений, платежей и финансовые итоги до и после миграции.
 
 ## Локальная разработка
 
+Локальная конфигурация намеренно отделена от production и использует профиль `local`:
+
 ```powershell
 docker compose up -d
-# В первом терминале: API на http://localhost:8080
 mvn spring-boot:run "-Dspring-boot.run.profiles=local"
-# Во втором терминале: UI на http://localhost:5173
+
 cd frontend
 npm ci
 npm run dev
 ```
 
-Исходный код интерфейса находится в отдельном проекте `frontend/`. Команда `mvn spring-boot:run` не собирает frontend: для локальной работы используйте Vite на `http://localhost:5173`, который проксирует API на Spring Boot.
+Локальный UI Vite доступен на `http://localhost:5173`; API — на `http://localhost:8080`. Первый локальный пароль по умолчанию — `local-development-password`; для иной локальной учётной записи задайте `INITIAL_ADMIN_PASSWORD` до первого запуска. Эти параметры предназначены только для локальной разработки.
 
-## Сборка приложения
+## Сборка и проверки
 
-```powershell
-mvn clean package
-java -jar target/kayak-bookkeeper-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+```bash
+mvn -B -ntp verify
+cd frontend && npm ci && npm run build && npm audit --omit=dev --audit-level=high
 ```
 
-`mvn clean package` автоматически выполняет `npm ci`, собирает UI и включает готовые статические файлы в исполняемый JAR. В упакованной версии интерфейс доступен по `http://localhost:8080/`.
+`mvn verify` устанавливает зафиксированные frontend-зависимости, собирает UI, запускает тесты и создаёт исполняемый `target/kayak-bookkeeper-1.0.0.jar`. Не запускайте `clean` или `package` в каталоге работающего приложения: собирайте релиз в CI либо в отдельной копии рабочего дерева. GitHub Actions выполняет ту же проверку для pull request, `master` и тегов `v*`.
 
-Локальная PostgreSQL доступна на `localhost:5450`: база `kayak_bookkeeper`, пользователь `postgres`, пароль `example`.
+## Операционные ограничения
 
-В упакованной версии минималистичный интерфейс управления доступен по адресу [http://localhost:8080/](http://localhost:8080/). При первом запуске создаётся пользователь `admin` с паролем `admin`; сразу смените его на вкладке «Пароль» (новый пароль — от 8 до 72 символов). API защищён HTTP Basic-аутентификацией. Swagger UI и OpenAPI JSON остаются доступны по адресам [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html) и [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs). Импортируйте [Postman-коллекцию](postman/kayak-bookkeeper.postman_collection.json) и при необходимости поменяйте `baseUrl`.
-
-## Модель
-
-Слотов нет: каждый абонемент сам хранит вместимость (по умолчанию 8) и список тренировок. Создать его можно:
-
-```json
-POST /api/subscriptions
-{"startsAt":["2026-11-10T19:00:00","2026-11-17T19:00:00"],"capacity":8,"title":"Ноябрь, вторник","description":"Вечерняя группа"}
-```
-
-или по еженедельному правилу:
-
-```json
-POST /api/subscriptions/recurring
-{"dayOfWeek":"TUESDAY","startTime":"19:00","startDate":"2026-11-10","sessionCount":4,"capacity":8,"title":"Ноябрь, вторник","description":"Вечерняя группа"}
-```
-
-Во втором варианте первая дата — `startDate`, если она совпадает с `dayOfWeek`, иначе следующая подходящая дата. Оба ответа содержат отсортированный список созданных тренировок. `title` и `description` необязательны в обоих способах создания и сохраняются в абонементе.
-
-`GET /api/subscriptions` возвращает полные карточки всех абонементов в порядке создания (по возрастанию идентификатора).
-
-## Тарифы и начисления
-
-Все тарифы относятся к **одной тренировке**: `POOL_RENTAL`, `DROP_IN`, `SKIRT_RENTAL`, `PADDLE_RENTAL`, `KAYAK_RENTAL`. При финализации для каждой даты выбирается тариф, действующий именно в этот день. Доля бассейна для каждой тренировки вычисляется как `ceil(стоимость / число участников)` и затем суммируется по тренировкам; выбранное снаряжение также начисляется за каждую тренировку. Разовое посещение использует `DROP_IN`, в который входит снаряжение.
-
-Автоматические начисления можно менять через `PUT /api/charges/{id}`. Ручная корректировка создаётся через `POST /api/charges`; сумму нельзя уменьшить ниже уже распределённых платежей. Баланс — сумма всех начислений минус полученные платежи.
+- Caddy получает и обновляет TLS-сертификаты автоматически. DNS должен указывать на сервер до первого запуска.
+- Не публикуйте 8080, 5432 и Docker socket; разрешите в firewall только 80/443 и администрирование по защищённому каналу.
+- PostgreSQL-том и Caddy-сертификаты находятся в Docker volumes. Не удаляйте volumes командой `docker compose down -v` без подтверждённой резервной копии.
+- Production-конфигурация не имеет запасных логинов, паролей или адреса БД. Ошибка отсутствующего секрета должна останавливать запуск.
+- Внешние ошибки не возвращают внутренние сообщения. Операционные причины ищите в ограниченных логах контейнера.

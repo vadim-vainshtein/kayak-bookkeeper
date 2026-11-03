@@ -5,12 +5,12 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.0</version>
+        <version>3.5.16</version>
         <relativePath/>
     </parent>
     <groupId>kz.kayak</groupId>
     <artifactId>kayak-bookkeeper</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0</version>
     <name>kayak-bookkeeper</name>
     <properties><java.version>21</java.version></properties>
     <dependencies>

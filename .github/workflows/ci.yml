@@ -1,0 +1,29 @@
+name: Verify
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Build, test, and package the executable JAR
+        run: mvn -B -ntp verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kayak-bookkeeper-jar
+          path: target/kayak-bookkeeper-1.0.0.jar
+          if-no-files-found: error

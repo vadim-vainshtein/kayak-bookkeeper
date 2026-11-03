@@ -2,6 +2,7 @@ target/
 .idea/
 *.iml
 .env
+backups/
 .m2/
 mvn-test*.log
 frontend/node_modules/

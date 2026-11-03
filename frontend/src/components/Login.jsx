@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { basicAuth } from '../api';
 
 export default function Login({ onLogin }) {
-  const [login, setLogin] = useState('admin');
-  const [password, setPassword] = useState('admin');
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   async function submit(event) {

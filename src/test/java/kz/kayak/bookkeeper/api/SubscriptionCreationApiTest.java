@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @Transactional
 class SubscriptionCreationApiTest {
-    static final String ADMIN_AUTHORIZATION = "Basic YWRtaW46YWRtaW4=";
+    static final String ADMIN_AUTHORIZATION = "Basic YWRtaW46dGVzdC1hZG1pbi1wYXNzd29yZA==";
     @Autowired
     MockMvc mockMvc;
     @Autowired

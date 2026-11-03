@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -13,12 +14,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class OpenApiDocumentationTest {
+    private static final String ADMIN_AUTHORIZATION = "Basic YWRtaW46dGVzdC1hZG1pbi1wYXNzd29yZA==";
     @Autowired
     private MockMvc mockMvc;
 
     @Test
     void publishesDescribedOpenApiSpecification() throws Exception {
         mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/v3/api-docs").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.openapi").exists())
                 .andExpect(jsonPath("$.info.title").value("Kayak Bookkeeper API"))
@@ -46,6 +51,9 @@ class OpenApiDocumentationTest {
     @Test
     void publishesSwaggerUi() throws Exception {
         mockMvc.perform(get("/swagger-ui/index.html"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/swagger-ui/index.html").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
                 .andExpect(status().isOk());
     }
 }

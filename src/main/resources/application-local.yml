@@ -9,3 +9,5 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+app:
+  initial-admin-password: ${INITIAL_ADMIN_PASSWORD:local-development-password}
