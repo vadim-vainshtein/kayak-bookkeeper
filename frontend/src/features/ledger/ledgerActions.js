@@ -28,6 +28,16 @@ export function createLedgerActions({ api, run, submit, loadBalance, refreshBala
             await api(`/api/charges/${charge.id}`, { method: 'PUT', body: JSON.stringify(values) });
             await Promise.all([loadBalance(id), refreshBalances()]);
         }, 'Начисление обновлено.');
+    const deleteCharge = (charge, id, onError) =>
+        run(async () => {
+            try {
+                await api(`/api/charges/${charge.id}`, { method: 'DELETE' });
+                await Promise.all([loadBalance(id, { keepCurrent: true }), refreshBalances()]);
+            } catch (error) {
+                onError?.(error.message);
+                throw error;
+            }
+        }, 'Начисление удалено.');
     const addPayment = (event, id) => {
         event.preventDefault();
         const target = event.currentTarget;
@@ -82,5 +92,5 @@ export function createLedgerActions({ api, run, submit, loadBalance, refreshBala
             () => api(`/api/payments/${paymentId}/allocations/${allocationId}`, { method: 'DELETE' }),
             'Распределение оплаты отменено.', onError,
         );
-    return { addCharge, saveCharge, addPayment, allocatePayment, savePayment, cancelAllocation };
+    return { addCharge, saveCharge, deleteCharge, addPayment, allocatePayment, savePayment, cancelAllocation };
 }

@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
-import { formatDate, money } from '../../shared/format.js';
-import { methodLabels, statusLabels } from '../../shared/labels.js';
+import { money } from '../../shared/format.js';
+import { statusLabels } from '../../shared/labels.js';
+import SubscriptionPaymentTable from './SubscriptionPaymentTable.jsx';
 
 export default function SubscriptionReportTable({ report }) {
     const [expandedSubscriptionIds, setExpandedSubscriptionIds] = useState([]);
@@ -80,57 +81,10 @@ export default function SubscriptionReportTable({ report }) {
                                             <tr id={detailsId} className="report-payment-details">
                                                 <td colSpan="7">
                                                     <h3>Оплаты, распределённые на начисления абонемента</h3>
-                                                    {subscription.payments.length ? (
-                                                        <div className="balance-table-wrap">
-                                                            <table className="balance-table report-table report-payment-table">
-                                                                <thead>
-                                                                    <tr>
-                                                                        <th>Каякер</th>
-                                                                        <th>Дата оплаты</th>
-                                                                        <th>Способ</th>
-                                                                        <th>Начисление</th>
-                                                                        <th>Сумма</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    {subscription.payments.map((payment) => (
-                                                                        <tr
-                                                                            key={`${payment.paymentId}-${payment.chargeId}`}
-                                                                        >
-                                                                            <td>
-                                                                                <strong>
-                                                                                    {payment.personName}
-                                                                                </strong>
-                                                                                {payment.paymentNote && (
-                                                                                    <small>
-                                                                                        {payment.paymentNote}
-                                                                                    </small>
-                                                                                )}
-                                                                            </td>
-                                                                            <td>
-                                                                                {formatDate(payment.paidAt)}
-                                                                            </td>
-                                                                            <td>
-                                                                                {methodLabels[payment.method]}
-                                                                            </td>
-                                                                            <td>
-                                                                                {payment.chargeDescription ||
-                                                                                    `Начисление #${payment.chargeId}`}
-                                                                            </td>
-                                                                            <td>
-                                                                                {money(payment.allocated)}
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    ) : (
-                                                        <p className="muted">
-                                                            На начисления этого абонемента оплат пока не
-                                                            распределено.
-                                                        </p>
-                                                    )}
+                                                    <SubscriptionPaymentTable
+                                                        subscriptionId={subscription.subscriptionId}
+                                                        payments={subscription.payments}
+                                                    />
                                                 </td>
                                             </tr>
                                         )}

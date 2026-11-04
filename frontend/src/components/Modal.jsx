@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef } from 'react';
 
-export default function Modal({ open, onClose, title, children }) {
+export default function Modal({ open, onClose, title, children, closeDisabled = false }) {
     const ref = useRef(null);
     const stateClosePending = useRef(false);
     const titleId = `modal-title-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -19,6 +19,7 @@ export default function Modal({ open, onClose, title, children }) {
     }, [open]);
 
     const close = () => {
+        if (closeDisabled) return;
         if (ref.current?.open) ref.current.close();
     };
 
@@ -40,13 +41,16 @@ export default function Modal({ open, onClose, title, children }) {
             className="modal-dialog"
             aria-labelledby={titleId}
             onClose={handleClose}
+            onCancel={(event) => {
+                if (closeDisabled) event.preventDefault();
+            }}
             onClick={(event) => {
                 if (event.target === event.currentTarget) close();
             }}
         >
             <div className="modal-header">
                 <h2 id={titleId}>{title}</h2>
-                <button type="button" onClick={close} aria-label="Закрыть окно">
+                <button type="button" onClick={close} disabled={closeDisabled} aria-label="Закрыть окно">
                     Закрыть
                 </button>
             </div>

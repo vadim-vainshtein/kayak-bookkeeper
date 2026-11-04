@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 
 import static kz.kayak.bookkeeper.service.EntityLookup.get;
 
-/** Creates and edits charges while protecting allocations and fee snapshots. */
+/** Creates, edits and deletes charges while protecting allocations and fee snapshots. */
 @Service
 public class ChargeService {
     private final PersonRepository people;
@@ -54,17 +54,26 @@ public class ChargeService {
         Subscription s = c.getSubscription();
         if (r.updateSubscription() || r.subscriptionId() != null) s = r.subscriptionId() == null ? null : get(subscriptions, r.subscriptionId(), "Subscription");
         c.edit(r.amount(), r.chargedAt(), r.description(), s);
-        syncEditedAutomaticCharge(c);
+        syncAutomaticFee(c, c.getAmount());
         return views.chargeView(c);
+    }
+
+    @Transactional
+    public void deleteCharge(long id) {
+        Charge c = lockedCharge(id);
+        if (charges.allocatedFor(c) > 0)
+            throw new DomainException("Нельзя удалить начисление с распределённой оплатой. Сначала отмените распределение в окне редактирования оплаты.");
+        syncAutomaticFee(c, 0);
+        charges.delete(c);
     }
 
     private Charge lockedCharge(long id) {
         return charges.findWithLockById(id).orElseThrow(() -> new NoSuchElementException("Charge " + id + " was not found"));
     }
 
-    private void syncEditedAutomaticCharge(Charge c) {
+    private void syncAutomaticFee(Charge c, long amount) {
         if (c.getSubscription() == null || c.getType() == ChargeType.MANUAL || c.getType() == ChargeType.DROP_IN)
             return;
-        members.findBySubscriptionAndPerson(c.getSubscription(), c.getPerson()).ifPresent(member -> member.editAutomaticFee(c.getType(), c.getAmount()));
+        members.findBySubscriptionAndPerson(c.getSubscription(), c.getPerson()).ifPresent(member -> member.editAutomaticFee(c.getType(), amount));
     }
 }

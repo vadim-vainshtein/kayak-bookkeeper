@@ -4,6 +4,7 @@ import { activeRate, formatDate, money, today } from '../../shared/format.js';
 import { rateLabels } from '../../shared/labels.js';
 
 export default function Rates({ rates, create, end, submitting, readOnly = false }) {
+    const [showInactive, setShowInactive] = useState(false);
     const [creating, setCreating] = useState(false);
     const [ending, setEnding] = useState(null);
     const [from, setFrom] = useState(today());
@@ -11,6 +12,7 @@ export default function Rates({ rates, create, end, submitting, readOnly = false
     const [createDateError, setCreateDateError] = useState('');
     const [endDateError, setEndDateError] = useState('');
     const [endDate, setEndDate] = useState('');
+    const visibleRates = showInactive ? rates : rates.filter(activeRate);
     const lastEndingId = useRef(null);
     useLayoutEffect(() => {
         if (ending && lastEndingId.current !== ending.id) {
@@ -63,9 +65,17 @@ export default function Rates({ rates, create, end, submitting, readOnly = false
                     Добавить тариф
                 </button>}
             </div>
-            {rates.length ? (
+            <label className="checkbox">
+                <input
+                    type="checkbox"
+                    checked={showInactive}
+                    onChange={(event) => setShowInactive(event.target.checked)}
+                />
+                Показывать недействующие
+            </label>
+            {visibleRates.length ? (
                 <ul className="list">
-                    {rates.map((rate) => (
+                    {visibleRates.map((rate) => (
                         <li key={rate.id}>
                             <div className="line">
                                 <strong>{rateLabels[rate.code]}</strong>
@@ -91,7 +101,7 @@ export default function Rates({ rates, create, end, submitting, readOnly = false
                     ))}
                 </ul>
             ) : (
-                <p className="muted">Тарифов пока нет.</p>
+                <p className="muted">{rates.length ? 'Действующих тарифов нет.' : 'Тарифов пока нет.'}</p>
             )}
             {!readOnly && <><Modal open={creating} onClose={() => setCreating(false)} title="Новый тариф">
                 <form onSubmit={createSubmit}>

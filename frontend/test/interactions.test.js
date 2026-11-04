@@ -193,6 +193,7 @@ test('report subscription rows expand and collapse payment details through keybo
                         payments: [
                             {
                                 paymentId: 2,
+                                personId: 2,
                                 chargeId: 3,
                                 personName: 'Каякер',
                                 paidAt: '2026-11-01',

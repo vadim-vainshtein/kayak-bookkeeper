@@ -86,13 +86,15 @@ textarea { resize: vertical; }
 .report-summary span { color: #66716d; font-size: 13px; }
 .report-summary strong { font-size: 20px; }
 .report-table td small { display: block; margin-top: 3px; color: #66716d; font-weight: 400; }
-.report-subscription-row { cursor: pointer; }
-.report-subscription-row:hover td { background: #f3f8f5; }
-.report-subscription-row:focus-visible { outline: 2px solid #0b6b4d; outline-offset: -2px; }
+.report-subscription-row, .report-person-row { cursor: pointer; }
+.report-subscription-row:hover td, .report-person-row:hover td { background: #f3f8f5; }
+.report-subscription-row:focus-visible, .report-person-row:focus-visible { outline: 2px solid #0b6b4d; outline-offset: -2px; }
 .report-payment-details > td { padding: 0 8px 14px; text-align: left; background: #f7faf8; }
 .report-payment-details h3 { margin: 14px 0 0; font-size: 16px; }
 .report-payment-details .balance-table-wrap { margin: 8px 0 0; }
 .report-payment-table { min-width: 520px; }
+.report-payment-controls { margin-top: 12px; }
+.report-person-details > td { padding: 0 8px 12px 24px; background: #fff; }
 .report-filters { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 4px 0 12px; }
 .debt { color: #9a2f1f; }
 .credit { color: #145a42; }

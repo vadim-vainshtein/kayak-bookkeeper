@@ -20,6 +20,7 @@ export default function Ledger({
     showPeople,
     addCharge,
     saveCharge,
+    deleteCharge,
     addPayment,
     allocatePayment,
     savePayment,
@@ -101,6 +102,7 @@ export default function Ledger({
                                 personId={personId}
                                 subscriptions={subscriptions}
                                 saveCharge={saveCharge}
+                                deleteCharge={deleteCharge}
                                 submitting={submitting}
                                 onClose={() => setEditingCharge(null)}
                             />

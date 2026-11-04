@@ -1,17 +1,24 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Modal from '../../components/Modal.jsx';
 import { formatDate, money } from '../../shared/format.js';
 import ChargeEditForm from './ChargeEditForm.jsx';
+import { chargeTitle } from './chargeTitle.js';
 
 export default function EditChargeDialogs({
     editingCharge,
     personId,
     subscriptions,
     saveCharge,
+    deleteCharge,
     submitting,
     onClose,
 }) {
     const [confirming, setConfirming] = useState(false);
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState('');
+    const deletionPending = useRef(false);
+    const busy = submitting || deleting;
     const [editDraft, setEditDraft] = useState(() => ({
         amount: editingCharge.amount,
         chargedAt: editingCharge.chargedAt,
@@ -23,9 +30,26 @@ export default function EditChargeDialogs({
     async function confirmEdit() {
         if (await saveCharge(editingCharge, personId, editDraft)) onClose();
     }
+    async function confirmDelete() {
+        if (busy || deletionPending.current || editingCharge.allocated > 0) return;
+        deletionPending.current = true;
+        setDeleting(true);
+        setDeleteError('');
+        let failure = 'Не удалось удалить начисление. Попробуйте ещё раз.';
+        try {
+            const ok = await deleteCharge(editingCharge, personId, (message) => { failure = message; });
+            if (ok) onClose();
+            else setDeleteError(failure);
+        } catch (error) {
+            setDeleteError(error.message || failure);
+        } finally {
+            deletionPending.current = false;
+            setDeleting(false);
+        }
+    }
     return (
         <>
-            <Modal open={!confirming} onClose={cancelEdit} title="Изменить начисление">
+            <Modal open={!confirming && !confirmingDelete} onClose={cancelEdit} title="Изменить начисление">
                 {editingCharge && editDraft && (
                     <ChargeEditForm
                         charge={editingCharge}
@@ -35,6 +59,30 @@ export default function EditChargeDialogs({
                         onConfirm={() => setConfirming(true)}
                     />
                 )}
+                <div className="dialog-actions">
+                    <button type="button" disabled={busy} onClick={() => { setDeleteError(''); setConfirmingDelete(true); }}>
+                        Удалить начисление
+                    </button>
+                </div>
+            </Modal>
+            <Modal
+                open={confirmingDelete}
+                closeDisabled={busy}
+                onClose={() => setConfirmingDelete(false)}
+                title="Подтвердить удаление начисления"
+            >
+                <p>Удалить «{chargeTitle(editingCharge, subscriptions)}» на сумму {money(editingCharge.amount)} от {formatDate(editingCharge.chargedAt)}? Это действие нельзя отменить.</p>
+                <p className="muted">Оплаты сохранятся. Баланс каякера будет пересчитан.</p>
+                {editingCharge.allocated > 0 && (
+                    <p role="alert">На начисление распределено {money(editingCharge.allocated)}. Сначала отмените распределение в окне редактирования оплаты.</p>
+                )}
+                {deleteError && <p className="validation-message" role="alert">{deleteError}</p>}
+                <div className="dialog-actions">
+                    <button type="button" disabled={busy} onClick={() => setConfirmingDelete(false)}>Отмена</button>
+                    <button type="button" className="primary" disabled={busy || editingCharge.allocated > 0} onClick={confirmDelete}>
+                        Подтвердить удаление
+                    </button>
+                </div>
             </Modal>
             <Modal
                 open={confirming}

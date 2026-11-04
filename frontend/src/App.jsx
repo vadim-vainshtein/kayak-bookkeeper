@@ -45,7 +45,7 @@ function ClubApp({ auth }) {
     const { createSubscription, previewSubscriptionUpdate, updateSubscription, finalize, complete } =
         createSubscriptionActions({ api, submit, load, run, setError });
     const { loadRoster, markAttendance, addDropIn } = createAttendanceActions({ api, run, refreshBalances });
-    const { addCharge, saveCharge, addPayment, allocatePayment, savePayment, cancelAllocation } = createLedgerActions({
+    const { addCharge, saveCharge, deleteCharge, addPayment, allocatePayment, savePayment, cancelAllocation } = createLedgerActions({
         api,
         run,
         submit,
@@ -86,6 +86,7 @@ function ClubApp({ auth }) {
                 showPeople={showPeople}
                 addCharge={addCharge}
                 saveCharge={saveCharge}
+                deleteCharge={deleteCharge}
                 addPayment={addPayment}
                 allocatePayment={allocatePayment}
                 savePayment={savePayment}
