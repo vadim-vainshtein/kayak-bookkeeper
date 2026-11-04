@@ -14,4 +14,7 @@ public class Payment {
     protected Payment() { }
     public Payment(Person person, long amount, LocalDate paidAt, PaymentMethod method, String note) { this.person=person; this.amount=amount; this.paidAt=paidAt; this.method=method; this.note=note; }
     public Long getId() { return id; } public Person getPerson() { return person; } public long getAmount() { return amount; } public LocalDate getPaidAt() { return paidAt; } public PaymentMethod getMethod() { return method; } public String getNote() { return note; }
+    public void setAmount(long amount) { this.amount = amount; }
+    public void setPaidAt(LocalDate paidAt) { this.paidAt = paidAt; }
+    public void setNote(String note) { this.note = note; }
 }

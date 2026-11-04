@@ -3,6 +3,7 @@ package kz.kayak.bookkeeper.security;
 import kz.kayak.bookkeeper.repository.UserAccountRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -25,7 +26,7 @@ public class SecurityConfiguration {
         return login -> accounts.findByLogin(login)
                 .map(account -> User.withUsername(account.getLogin())
                         .password(account.getPasswordHash())
-                        .roles("ADMIN")
+                        .roles(account.getRole().name())
                         .build())
                 .orElseThrow(() -> new UsernameNotFoundException("Unknown user"));
     }
@@ -38,7 +39,10 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/", "/index.html", "/favicon.ico", "/assets/**", "/error").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**").authenticated()
-                        .requestMatchers("/api/**").authenticated()
+                        .requestMatchers("/api/users", "/api/users/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole("ADMIN", "READ_ONLY")
+                        .requestMatchers(HttpMethod.HEAD, "/api/**").hasAnyRole("ADMIN", "READ_ONLY")
+                        .requestMatchers("/api/**").hasRole("ADMIN")
                         .anyRequest().denyAll())
                 .httpBasic(Customizer.withDefaults())
                 .build();

@@ -32,6 +32,11 @@
     {
       "key": "paymentId",
       "value": ""
+    },
+    {
+      "key": "allocationId",
+      "value": "",
+      "description": "Идентификатор распределения из allocations нужного платежа в ответе Баланс"
     }
   ],
   "item": [
@@ -425,6 +430,30 @@
             },
             "url": "{{baseUrl}}/api/payments/{{paymentId}}/allocations"
           }
+        },
+        {
+          "name": "Изменить оплату",
+          "request": {
+            "method": "PATCH",
+            "description": "Меняет сумму, дату и комментарий оплаты. amount обязателен, должен быть положительным целым числом и не меньше суммы текущих allocations. paidAt и note необязательны: пропущенное или null значение сохраняет прежнее; note: \"\" очищает комментарий. Дата в формате YYYY-MM-DD, комментарий до 1000 символов. Способ оплаты и существующие распределения не меняются. Возвращает PaymentView; 400 при некорректных значениях, 409 при уменьшении ниже распределённой суммы, 404 если платежа нет.",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"amount\":1500,\"paidAt\":\"2026-11-04\",\"note\":\"Исправленный комментарий\"}" },
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Оплата обновлена', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().amount).to.eql(1500); pm.expect(pm.response.json().paidAt).to.eql('2026-11-04'); pm.expect(pm.response.json().note).to.eql('Исправленный комментарий'); });"
+          ] } }]
+        },
+        {
+          "name": "Отменить распределение платежа",
+          "request": {
+            "method": "DELETE",
+            "description": "Укажите allocationId из allocations платежа в ответе Баланс. Отменяет только выбранное распределение, сумма платежа не меняется и снова доступна для распределения. 204 при успехе; 404 если платёж или его распределение не найдены.",
+            "url": "{{baseUrl}}/api/payments/{{paymentId}}/allocations/{{allocationId}}"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Распределение отменено', () => pm.response.to.have.status(204));"
+          ] } }]
         },
         {
           "name": "Баланс",

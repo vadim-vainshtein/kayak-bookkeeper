@@ -1,6 +1,12 @@
 package kz.kayak.bookkeeper.security;
 
 import kz.kayak.bookkeeper.domain.UserAccount;
+import kz.kayak.bookkeeper.api.dto.CreateUserRequest;
+import kz.kayak.bookkeeper.api.dto.UserAccountView;
+import kz.kayak.bookkeeper.service.DomainException;
+import java.util.List;
+import org.springframework.data.domain.Sort;
+import org.springframework.dao.DataIntegrityViolationException;
 import kz.kayak.bookkeeper.repository.UserAccountRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -16,6 +22,32 @@ public class AccountService {
     public AccountService(UserAccountRepository accounts, PasswordEncoder passwordEncoder) {
         this.accounts = accounts;
         this.passwordEncoder = passwordEncoder;
+    }
+
+    @Transactional(readOnly = true)
+    public UserAccountView currentAccount(String login) {
+        return view(accounts.findByLogin(login).orElseThrow());
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserAccountView> listAccounts() {
+        return accounts.findAll(Sort.by("login")).stream().map(AccountService::view).toList();
+    }
+
+    @Transactional
+    public UserAccountView createAccount(CreateUserRequest request) {
+        if (accounts.findByLogin(request.login()).isPresent()) {
+            throw new DomainException("Пользователь с таким логином уже существует.");
+        }
+        try {
+            return view(accounts.saveAndFlush(new UserAccount(request.login(), passwordEncoder.encode(request.password()), request.role())));
+        } catch (DataIntegrityViolationException exception) {
+            throw new DomainException("Пользователь с таким логином уже существует.");
+        }
+    }
+
+    private static UserAccountView view(UserAccount account) {
+        return new UserAccountView(account.getId(), account.getLogin(), account.getRole());
     }
 
     @Transactional

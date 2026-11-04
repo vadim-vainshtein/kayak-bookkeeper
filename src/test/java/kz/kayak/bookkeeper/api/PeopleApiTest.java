@@ -1,12 +1,22 @@
 package kz.kayak.bookkeeper.api;
 
-import kz.kayak.bookkeeper.service.BookkeepingService;
+import kz.kayak.bookkeeper.api.dto.AllocationRequest;
+import kz.kayak.bookkeeper.api.dto.ChargeView;
+import kz.kayak.bookkeeper.api.dto.ManualChargeRequest;
+import kz.kayak.bookkeeper.api.dto.PaymentRequest;
+import kz.kayak.bookkeeper.api.dto.PaymentView;
+import kz.kayak.bookkeeper.api.dto.PersonRequest;
+import kz.kayak.bookkeeper.api.dto.PersonView;
+import kz.kayak.bookkeeper.service.BalanceService;
+import kz.kayak.bookkeeper.service.ChargeService;
+import kz.kayak.bookkeeper.service.PaymentService;
+import kz.kayak.bookkeeper.service.PersonService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,11 +32,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PeopleApiTest {
     private static final String ADMIN_AUTHORIZATION = "Basic YWRtaW46dGVzdC1hZG1pbi1wYXNzd29yZA==";
     @Autowired private MockMvc mockMvc;
-    @Autowired private BookkeepingService service;
+    @Autowired BalanceService balanceService;
+    @Autowired ChargeService chargeService;
+    @Autowired PaymentService paymentService;
+    @Autowired PersonService personService;
 
     @Test
     void updatesKayakerAndAllowsDeactivation() throws Exception {
-        Api.PersonView person = service.createPerson(new Api.PersonRequest("Старая Алия", "+77010000000", "старое"));
+        PersonView person = personService.createPerson(new PersonRequest("Старая Алия", "+77010000000", "старое"));
 
         mockMvc.perform(put("/api/people/{id}", person.id())
                         .header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION)
@@ -39,7 +52,7 @@ class PeopleApiTest {
                 .andExpect(jsonPath("$.note").value("обновлено"))
                 .andExpect(jsonPath("$.active").value(false));
 
-        assertThat(service.listPeople()).singleElement().satisfies(updated -> assertThat(updated.active()).isFalse());
+        assertThat(personService.listPeople()).singleElement().satisfies(updated -> assertThat(updated.active()).isFalse());
     }
 
     @Test
@@ -54,7 +67,7 @@ class PeopleApiTest {
 
     @Test
     void rejectsBlankFullName() throws Exception {
-        Api.PersonView person = service.createPerson(new Api.PersonRequest("Алия", null, null));
+        PersonView person = personService.createPerson(new PersonRequest("Алия", null, null));
 
         mockMvc.perform(put("/api/people/{id}", person.id())
                         .header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION)
@@ -65,13 +78,13 @@ class PeopleApiTest {
 
     @Test
     void listsPeopleWithTheirBalanceSummaries() throws Exception {
-        Api.PersonView person = service.createPerson(new Api.PersonRequest("Алия", null, null));
-        service.createManualCharge(new Api.ManualChargeRequest(person.id(), 5_000, java.time.LocalDate.of(2026, 11, 1), "Тренировка", null));
-        Api.ChargeView charge = service.balance(person.id()).charges().getFirst();
-        Api.PaymentView partlyAllocated = service.createPayment(new Api.PaymentRequest(person.id(), 2_000, java.time.LocalDate.of(2026, 11, 2), kz.kayak.bookkeeper.domain.PaymentMethod.CASH, null));
-        service.allocatePayment(partlyAllocated.id(), new Api.AllocationRequest(charge.id(), 1_200));
-        Api.PaymentView fullyAllocated = service.createPayment(new Api.PaymentRequest(person.id(), 500, java.time.LocalDate.of(2026, 11, 3), kz.kayak.bookkeeper.domain.PaymentMethod.CASH, null));
-        service.allocatePayment(fullyAllocated.id(), new Api.AllocationRequest(charge.id(), 500));
+        PersonView person = personService.createPerson(new PersonRequest("Алия", null, null));
+        chargeService.createManualCharge(new ManualChargeRequest(person.id(), 5_000, java.time.LocalDate.of(2026, 11, 1), "Тренировка", null));
+        ChargeView charge = balanceService.balance(person.id()).charges().getFirst();
+        PaymentView partlyAllocated = paymentService.createPayment(new PaymentRequest(person.id(), 2_000, java.time.LocalDate.of(2026, 11, 2), kz.kayak.bookkeeper.domain.PaymentMethod.CASH, null));
+        paymentService.allocatePayment(partlyAllocated.id(), new AllocationRequest(charge.id(), 1_200));
+        PaymentView fullyAllocated = paymentService.createPayment(new PaymentRequest(person.id(), 500, java.time.LocalDate.of(2026, 11, 3), kz.kayak.bookkeeper.domain.PaymentMethod.CASH, null));
+        paymentService.allocatePayment(fullyAllocated.id(), new AllocationRequest(charge.id(), 500));
 
         mockMvc.perform(get("/api/people/balances").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
                 .andExpect(status().isOk())
@@ -85,11 +98,11 @@ class PeopleApiTest {
 
     @Test
     void listsKayakersAlphabeticallyByName() throws Exception {
-        service.createPerson(new Api.PersonRequest("Зоя", null, null));
-        service.createPerson(new Api.PersonRequest("алия", null, null));
-        service.createPerson(new Api.PersonRequest("Алина", null, null));
-        service.createPerson(new Api.PersonRequest("Алия", null, null));
-        service.createPerson(new Api.PersonRequest("Борис", null, null));
+        personService.createPerson(new PersonRequest("Зоя", null, null));
+        personService.createPerson(new PersonRequest("алия", null, null));
+        personService.createPerson(new PersonRequest("Алина", null, null));
+        personService.createPerson(new PersonRequest("Алия", null, null));
+        personService.createPerson(new PersonRequest("Борис", null, null));
 
         mockMvc.perform(get("/api/people").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
                 .andExpect(status().isOk())

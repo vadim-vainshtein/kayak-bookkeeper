@@ -1,23 +1,24 @@
 package kz.kayak.bookkeeper.api;
 
+import java.time.LocalDate;
+import kz.kayak.bookkeeper.api.dto.RateRequest;
+import kz.kayak.bookkeeper.api.dto.RateView;
 import kz.kayak.bookkeeper.domain.RateCode;
-import kz.kayak.bookkeeper.service.BookkeepingService;
+import kz.kayak.bookkeeper.service.PricingRateService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import org.springframework.http.MediaType;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -25,16 +26,16 @@ import org.springframework.http.MediaType;
 class PricingRateDeletionApiTest {
     private static final String ADMIN_AUTHORIZATION = "Basic YWRtaW46dGVzdC1hZG1pbi1wYXNzd29yZA==";
     @Autowired private MockMvc mockMvc;
-    @Autowired private BookkeepingService service;
+    @Autowired PricingRateService pricingRateService;
 
     @Test
     void deletesExistingRateWithNoContent() throws Exception {
-        Api.RateView rate = service.createRate(new Api.RateRequest(RateCode.POOL_RENTAL, 30_000, LocalDate.of(2026, 1, 1), null));
+        RateView rate = pricingRateService.createRate(new RateRequest(RateCode.POOL_RENTAL, 30_000, LocalDate.of(2026, 1, 1), null));
 
         mockMvc.perform(delete("/api/pricing-rates/{id}", rate.id()).header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
                 .andExpect(status().isNoContent());
 
-        assertThat(service.listRates()).extracting(Api.RateView::id).doesNotContain(rate.id());
+        assertThat(pricingRateService.listRates()).extracting(RateView::id).doesNotContain(rate.id());
     }
 
     @Test
