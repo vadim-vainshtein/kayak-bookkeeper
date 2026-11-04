@@ -11,6 +11,7 @@ import kz.kayak.bookkeeper.api.dto.PersonUpdateRequest;
 import kz.kayak.bookkeeper.api.dto.PersonView;
 import kz.kayak.bookkeeper.service.PersonService;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,10 +38,16 @@ public class PersonController {
         return personService.createPerson(body);
     }
 
-    @Operation(summary = "Получить список каякеров")
+    @Operation(summary = "Получить список каякеров", description = "Контакты и заметки доступны только администраторам; для READ_ONLY поля phone и note возвращаются как null.")
     @GetMapping("/people")
-    public List<PersonView> people() {
-        return personService.listPeople();
+    public List<PersonView> people(Authentication authentication) {
+        List<PersonView> people = personService.listPeople();
+        boolean admin = authentication.getAuthorities().stream()
+                .anyMatch(authority -> authority.getAuthority().equals("ROLE_ADMIN"));
+        if (admin) return people;
+        return people.stream()
+                .map(person -> new PersonView(person.id(), person.fullName(), null, null, person.active()))
+                .toList();
     }
 
     @Operation(summary = "Изменить карточку каякера", description = "Позволяет изменить контактные данные, заметку и признак активности. Уже существующие абонементы, начисления и платежи сохраняются.")

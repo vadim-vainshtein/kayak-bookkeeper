@@ -28,7 +28,12 @@ test('read-only screens preserve club details and navigation while removing muta
     const people = await render(h(People, { readOnly: true, people: [{ id: 1, fullName: 'Алия', phone: '700', note: 'Заметка', active: true }] }));
     assert.equal(button(people, 'Добавить каякера'), undefined);
     await act(async () => people.root.findByProps({ className: 'person' }).props.onClick());
-    assert.ok(text(people).includes('Заметка'));
+    assert.ok(text(people).includes('Алия'));
+    assert.ok(text(people).includes('Активен'));
+    assert.ok(!text(people).includes('Заметка'));
+    assert.ok(!text(people).includes('700'));
+    assert.ok(!text(people).includes('Телефон не указан'));
+    assert.ok(!text(people).includes('Заметок нет'));
     assert.equal(people.root.findAllByType('form').length, 0);
 
     const rates = await render(h(Rates, { readOnly: true, rates: [{ id: 1, code: 'POOL_RENTAL', amount: 500, effectiveFrom: '2026-11-01' }] }));
@@ -48,6 +53,35 @@ test('read-only screens preserve club details and navigation while removing muta
     await act(async () => button(subscriptions, 'Перекличка').props.onClick());
     assert.equal(rosterCalls, 1);
     assert.equal(button(subscriptions, 'Сохранить отметки'), undefined);
+});
+
+test('read-only people search uses names only even when private details are supplied', async () => {
+    const renderer = await render(h(People, { readOnly: true, people: [
+        { id: 1, fullName: 'Алия', phone: '+77001234567', note: 'Личный комментарий', active: true },
+    ] }));
+    const search = renderer.root.findByProps({ placeholder: 'Имя' });
+    assert.ok(!text(renderer).includes('+77001234567'));
+    await act(async () => search.props.onChange({ target: { value: '1234567' } }));
+    assert.equal(renderer.root.findAllByProps({ className: 'person' }).length, 0);
+    await act(async () => search.props.onChange({ target: { value: 'АЛИЯ' } }));
+    assert.equal(renderer.root.findAllByProps({ className: 'person' }).length, 1);
+    await act(async () => renderer.root.findByProps({ className: 'person' }).props.onClick());
+    assert.ok(!text(renderer).includes('Личный комментарий'));
+    assert.ok(!text(renderer).includes('+77001234567'));
+});
+
+test('admin people search and editing retain contacts and personal notes', async () => {
+    const renderer = await render(h(People, { people: [
+        { id: 1, fullName: 'Алия', phone: '+77001234567', note: 'Личный комментарий', active: true },
+    ] }));
+    assert.ok(text(renderer).includes('+77001234567'));
+    await act(async () => renderer.root.findByProps({ placeholder: 'Имя или телефон' }).props.onChange({ target: { value: '1234567' } }));
+    assert.equal(renderer.root.findAllByProps({ className: 'person' }).length, 1);
+    await act(async () => renderer.root.findByProps({ className: 'person' }).props.onClick());
+    const editForm = renderer.root.findAllByType('form').find((form) => form.findAllByProps({ name: 'note' }).length);
+    assert.equal(editForm.findByProps({ name: 'phone' }).props.defaultValue, '+77001234567');
+    assert.equal(renderer.root.findByProps({ name: 'note' }).props.defaultValue, 'Личный комментарий');
+    assert.ok(button(renderer, 'Сохранить'));
 });
 
 test('read-only attendance shows recorded statuses and drop-ins without editable inputs', async () => {

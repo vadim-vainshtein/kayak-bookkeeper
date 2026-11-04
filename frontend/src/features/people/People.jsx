@@ -9,7 +9,7 @@ export default function People({ people, onAdd, onUpdate, submitting, readOnly =
     const visible = people.filter(
         (person) =>
             (!activeOnly || person.active) &&
-            `${person.fullName} ${person.phone || ''}`.toLowerCase().includes(query.toLowerCase()),
+            `${person.fullName} ${!readOnly ? person.phone || '' : ''}`.toLowerCase().includes(query.toLowerCase()),
     );
     const form = (person, submit) => (
         <form key={person?.id || 'new'} onSubmit={submit}>
@@ -63,7 +63,7 @@ export default function People({ people, onAdd, onUpdate, submitting, readOnly =
                 <input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Имя или телефон"
+                    placeholder={readOnly ? 'Имя' : 'Имя или телефон'}
                 />
             </label>
             <label className="checkbox">
@@ -83,7 +83,7 @@ export default function People({ people, onAdd, onUpdate, submitting, readOnly =
                                     <strong>{person.fullName}</strong>
                                     <span className="muted">{person.active ? 'активен' : 'неактивен'}</span>
                                 </div>
-                                <small className="muted">{person.phone || 'Телефон не указан'}</small>
+                                {!readOnly && <small className="muted">{person.phone || 'Телефон не указан'}</small>}
                             </button>
                         </li>
                     ))}
@@ -100,9 +100,7 @@ export default function People({ people, onAdd, onUpdate, submitting, readOnly =
             <Modal open={Boolean(editing)} onClose={() => setEditing(null)} title={readOnly ? "Каякер" : "Редактировать каякера"}>
                 {readOnly && editing && <>
                     <h3>{editing.fullName}</h3>
-                    <p>{editing.phone || 'Телефон не указан'}</p>
                     <p>{editing.active ? 'Активен' : 'Неактивен'}</p>
-                    <p>{editing.note || 'Заметок нет'}</p>
                 </>}
                 {!readOnly && editing &&
                     form(editing, async (event) => {

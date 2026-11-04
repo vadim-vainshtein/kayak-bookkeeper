@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -62,7 +63,7 @@ class UserRolesApiTest {
     }
 
     @Test
-    void memberReadsAllClubDataIncludingBalancesFinancialReportsAndDocumentation() throws Exception {
+    void memberReadsClubDataIncludingBalancesFinancialReportsAndDocumentation() throws Exception {
         member();
         var person = people.createPerson(new PersonRequest("Алия", "700", "Заметка"));
         var subscription = subscriptions.createExplicitSubscription(new ExplicitSubscriptionRequest(
@@ -78,6 +79,43 @@ class UserRolesApiTest {
                 .andExpect(jsonPath("$.unassignedCharges[0].amount").value(5_000));
         mvc.perform(head("/api/people").header("Authorization", MEMBER)).andExpect(status().isOk());
         mvc.perform(get("/api/users").header("Authorization", MEMBER)).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void onlyAdminsCanReadKayakerContactsAndNotesWithoutChangingStoredDetails() throws Exception {
+        member();
+        var first = people.createPerson(new PersonRequest("Алия", "+77001234567", "Личная заметка"));
+        var second = people.createPerson(new PersonRequest("Борис", "+77007654321", "Другой комментарий"));
+        people.updatePerson(second.id(), new PersonUpdateRequest(second.fullName(), second.phone(), second.note(), false));
+
+        mvc.perform(get("/api/people").header("Authorization", MEMBER))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(first.id()))
+                .andExpect(jsonPath("$[0].fullName").value("Алия"))
+                .andExpect(jsonPath("$[0].active").value(true))
+                .andExpect(jsonPath("$[0].phone").value(nullValue()))
+                .andExpect(jsonPath("$[0].note").value(nullValue()))
+                .andExpect(jsonPath("$[1].active").value(false))
+                .andExpect(jsonPath("$[1].phone").value(nullValue()))
+                .andExpect(jsonPath("$[1].note").value(nullValue()));
+        mvc.perform(get("/api/people").header("Authorization", ADMIN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].phone").value(first.phone()))
+                .andExpect(jsonPath("$[0].note").value(first.note()))
+                .andExpect(jsonPath("$[1].phone").value(second.phone()))
+                .andExpect(jsonPath("$[1].note").value(second.note()));
+        mvc.perform(put("/api/people/" + first.id()).header("Authorization", ADMIN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(new PersonUpdateRequest("Алия", "+77001111111", "Новая заметка", true))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.phone").value("+77001111111"))
+                .andExpect(jsonPath("$.note").value("Новая заметка"));
+        mvc.perform(get("/api/people").header("Authorization", MEMBER))
+                .andExpect(jsonPath("$[0].phone").value(nullValue()))
+                .andExpect(jsonPath("$[0].note").value(nullValue()));
+        assertThat(people.listPeople().getFirst().phone()).isEqualTo("+77001111111");
+        assertThat(people.listPeople().getFirst().note()).isEqualTo("Новая заметка");
     }
 
     @Test
