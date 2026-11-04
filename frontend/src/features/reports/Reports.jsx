@@ -23,7 +23,10 @@ export default function Reports({ reportState, loading, loadReport, subscription
     const toggleSubscription = (id) =>
         setSubscriptionIds((ids) => (ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id]));
     const exportCsv = () => {
-        if (report) downloadFinancialReport(report, subscriptionLabel);
+        const csvSubscriptionLabel = selectedSubscriptions.length === 1
+            ? selectedSubscriptions[0].title || 'Без названия'
+            : subscriptionLabel;
+        if (report) downloadFinancialReport(report, csvSubscriptionLabel);
     };
     const submitReport = async (event) => {
         event.preventDefault();

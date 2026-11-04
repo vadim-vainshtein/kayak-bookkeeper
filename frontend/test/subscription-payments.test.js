@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createElement as h } from 'react';
 import { act, create } from 'react-test-renderer';
 import SubscriptionReportTable from '../src/features/reports/SubscriptionReportTable.jsx';
+import Reports from '../src/features/reports/Reports.jsx';
 import { formatDate, money } from '../src/shared/format.js';
 
 const payments = [
@@ -79,4 +80,32 @@ test('subscription without allocated payments keeps its empty message without gr
     await openSubscription(renderer);
     assert.ok(text(rows(renderer, 'report-payment-details')[0]).includes('На начисления этого абонемента оплат пока не распределено.'));
     assert.equal(renderer.root.findAllByType('button').length, 0);
+});
+
+test('CSV download omits the selected unnamed subscription ID while preserving its UI label', async (t) => {
+    const previousDocument = globalThis.document;
+    let downloadedBlob;
+    let clicks = 0;
+    globalThis.document = { createElement: () => ({ click() { clicks++; } }) };
+    t.after(() => { globalThis.document = previousDocument; });
+    t.mock.method(URL, 'createObjectURL', (blob) => { downloadedBlob = blob; return 'blob:report'; });
+    t.mock.method(URL, 'revokeObjectURL', () => {});
+    let renderer;
+    await act(async () => {
+        renderer = create(h(Reports, {
+            reportState: {
+                subscriptionIds: [47007],
+                data: { summary: {}, subscriptions: [], unassignedCharges: [] },
+            },
+            subscriptions: [{ id: 47007, title: null }],
+            loadReport: async () => {},
+        }));
+    });
+    t.after(() => act(() => renderer.unmount()));
+    assert.ok(JSON.stringify(renderer.toJSON()).includes('Абонемент #47007'));
+    await act(async () => renderer.root.findAllByType('button').find((button) => button.children.includes('Скачать CSV')).props.onClick());
+    assert.equal(clicks, 1);
+    const csv = await downloadedBlob.text();
+    assert.ok(csv.includes('"Абонементы","Без названия"'));
+    assert.doesNotMatch(csv, /47007|Абонемент #/);
 });

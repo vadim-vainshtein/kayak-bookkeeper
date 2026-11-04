@@ -87,7 +87,7 @@ test('attendance marks exclude unchanged entries and send absences first to free
     assert.deepEqual(attendanceMarks(members.slice(1), { 2: true, 3: false }), []);
 });
 
-test('CSV exports allocation details and correctly escapes commas, quotes and newlines', () => {
+test('CSV exports allocation details without IDs and correctly escapes commas, quotes and newlines', () => {
     const csv = financialReportCsv(
         {
             summary: {
@@ -99,7 +99,7 @@ test('CSV exports allocation details and correctly escapes commas, quotes and ne
             },
             subscriptions: [
                 {
-                    subscriptionId: 1,
+                    subscriptionId: 41001,
                     title: 'Клуб, "Весло"\nНоябрь',
                     status: 'FINALIZED',
                     memberCount: 1,
@@ -110,11 +110,34 @@ test('CSV exports allocation details and correctly escapes commas, quotes and ne
                     clubProfit: 10,
                     payments: [
                         {
-                            paymentId: 2,
-                            chargeId: 3,
+                            paymentId: 42002,
+                            chargeId: 43003,
                             personName: 'Каякер',
                             paidAt: '2026-11-02',
                             method: 'CASH',
+                            paymentNote: 'Первая, "часть"\nоплаты',
+                            chargeDescription: 'Бассейн',
+                            allocated: 30,
+                        },
+                    ],
+                },
+                {
+                    subscriptionId: 44004,
+                    title: null,
+                    status: 'FINALIZED',
+                    memberCount: 1,
+                    charged: 100,
+                    allocatedPayments: 30,
+                    outstanding: 70,
+                    poolRentalCost: 20,
+                    clubProfit: 10,
+                    payments: [
+                        {
+                            paymentId: 45005,
+                            chargeId: 46006,
+                            personName: 'Другой каякер',
+                            paidAt: '2026-11-03',
+                            method: 'TRANSFER',
                             allocated: 30,
                         },
                     ],
@@ -135,6 +158,10 @@ test('CSV exports allocation details and correctly escapes commas, quotes and ne
     );
     assert.ok(csv.startsWith('\uFEFF'));
     assert.ok(csv.includes('"Клуб, ""Весло""\nНоябрь"'));
-    assert.ok(csv.includes('"Начисление #3","3","2","30"'));
+    assert.ok(csv.includes('"Абонемент","Каякер","Дата оплаты","Способ оплаты","Примечание к оплате","Начисление","Оплачено, ₸"'));
+    assert.ok(csv.includes('"Клуб, ""Весло""\nНоябрь","Каякер","2026-11-02","Наличные","Первая, ""часть""\nоплаты","Бассейн","30"'));
+    assert.ok(csv.includes('"Без названия","Рассчитан","1","100","30","70","20","10"'));
+    assert.ok(csv.includes('"Без названия","Другой каякер","2026-11-03","Перевод","","Без описания","30"'));
+    assert.doesNotMatch(csv, /ID|41001|42002|43003|44004|45005|46006|Абонемент #|Начисление #/);
     assert.ok(csv.includes('"Ручное начисление","","5","0","5"'));
 });
