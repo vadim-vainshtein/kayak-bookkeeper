@@ -37,6 +37,7 @@ export default function SubscriptionReportTable({ report }) {
                             <th scope="col">Недостача</th>
                             <th scope="col">Бассейн</th>
                             <th scope="col">Прибыль</th>
+                            <th scope="col">Касса сейчас</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -82,9 +83,12 @@ export default function SubscriptionReportTable({ report }) {
                                             <td className={subscription.clubProfit < 0 ? 'debt' : 'credit'}>
                                                 {money(subscription.clubProfit)}
                                             </td>
+                                            <td className={subscription.cashBalance < 0 ? 'debt' : 'credit'}>
+                                                {money(subscription.cashBalance)}
+                                            </td>
                                         </tr>
                                         <tr id={detailsId} hidden={!expanded} className="report-payment-details">
-                                            <td colSpan="7">
+                                            <td colSpan="8">
                                                 {expanded && (
                                                     <SubscriptionPaymentTable
                                                         subscriptionId={subscription.subscriptionId}
@@ -98,7 +102,7 @@ export default function SubscriptionReportTable({ report }) {
                             })
                         ) : (
                             <tr>
-                                <td colSpan="7" className="muted">
+                                <td colSpan="8" className="muted">
                                     Абонементы не найдены.
                                 </td>
                             </tr>

@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSubscriptionActions } from '../src/features/subscriptions/subscriptionActions.js';
 import { createLedgerActions } from '../src/features/ledger/ledgerActions.js';
-import { createAttendanceActions } from '../src/features/attendance/attendanceActions.js';
 
 function setupForm(t, fields) {
     t.mock.property(
@@ -96,32 +95,4 @@ test('payment registration preserves atomic allocation payload and refreshes bal
         ],
     ]);
     assert.deepEqual(refreshes, [7, 'all']);
-});
-
-test('attendance saves marks sequentially and stops after a failure', async () => {
-    const saved = [];
-    const actions = createAttendanceActions({
-        run: async (action) => {
-            try {
-                await action();
-                return true;
-            } catch {
-                return false;
-            }
-        },
-        api: async (_, options) => {
-            const mark = JSON.parse(options.body);
-            saved.push(mark.personId);
-            if (mark.personId === 2) throw Error('rejected');
-        },
-    });
-    assert.equal(
-        await actions.markAttendance(5, [
-            { personId: 1, status: 'ABSENT' },
-            { personId: 2, status: 'PRESENT' },
-            { personId: 3, status: 'PRESENT' },
-        ]),
-        false,
-    );
-    assert.deepEqual(saved, [1, 2]);
 });

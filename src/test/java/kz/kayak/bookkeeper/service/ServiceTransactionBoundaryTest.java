@@ -2,9 +2,7 @@ package kz.kayak.bookkeeper.service;
 
 import java.time.LocalDate;
 import java.util.List;
-import kz.kayak.bookkeeper.api.dto.AttendanceRequest;
 import kz.kayak.bookkeeper.api.dto.ChargeView;
-import kz.kayak.bookkeeper.api.dto.DropInRequest;
 import kz.kayak.bookkeeper.api.dto.ExplicitSubscriptionRequest;
 import kz.kayak.bookkeeper.api.dto.ManualChargeRequest;
 import kz.kayak.bookkeeper.api.dto.MemberRequest;
@@ -12,9 +10,7 @@ import kz.kayak.bookkeeper.api.dto.PaymentWithAllocationRequest;
 import kz.kayak.bookkeeper.api.dto.PersonRequest;
 import kz.kayak.bookkeeper.api.dto.PersonView;
 import kz.kayak.bookkeeper.api.dto.RateRequest;
-import kz.kayak.bookkeeper.api.dto.RosterView;
 import kz.kayak.bookkeeper.api.dto.SubscriptionView;
-import kz.kayak.bookkeeper.domain.AttendanceStatus;
 import kz.kayak.bookkeeper.domain.PaymentMethod;
 import kz.kayak.bookkeeper.domain.RateCode;
 import kz.kayak.bookkeeper.domain.SubscriptionStatus;
@@ -35,7 +31,6 @@ class ServiceTransactionBoundaryTest {
     @Autowired SubscriptionService subscriptions;
     @Autowired SubscriptionQueryService subscriptionQueries;
     @Autowired SubscriptionFinalizationService finalization;
-    @Autowired AttendanceService attendance;
     @Autowired ChargeService charges;
     @Autowired PaymentService payments;
     @Autowired BalanceService balances;
@@ -62,27 +57,6 @@ class ServiceTransactionBoundaryTest {
         assertThat(balances.balance(second.id()).charges()).isEmpty();
     }
 
-    @Test
-    void failedDropInRollsBackAttendanceAndLeavesReleasedPlaceAvailable() {
-        LocalDate date = LocalDate.of(2032, 1, 8);
-        rates.createRate(new RateRequest(RateCode.POOL_RENTAL, 100, date, date));
-        PersonView member = person("Absent member");
-        PersonView visitor = person("Visitor without drop-in rate");
-        SubscriptionView draft = subscription(date);
-        subscriptions.addMember(draft.id(), new MemberRequest(member.id(), false, false, false));
-        SubscriptionView finalized = finalization.finalizeSubscription(draft.id());
-        long sessionId = finalized.sessions().getFirst().id();
-        attendance.markSubscriptionAttendance(sessionId, new AttendanceRequest(member.id(), AttendanceStatus.ABSENT));
-
-        assertThatThrownBy(() -> attendance.addDropIn(sessionId, new DropInRequest(visitor.id())))
-                .isInstanceOf(DomainException.class)
-                .hasMessageContaining("DROP_IN");
-
-        RosterView roster = attendance.roster(sessionId);
-        assertThat(roster.attendance()).hasSize(1);
-        assertThat(roster.vacanciesForDropIns()).isEqualTo(1);
-        assertThat(balances.balance(visitor.id()).charges()).isEmpty();
-    }
 
     @Test
     void invalidCombinedPaymentDoesNotLeaveAnUnallocatedPayment() {

@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api")
-@Tag(name = "Учёт тренировок", description = "Абонементы, посещения, тарифы и оплаты каяк-клуба")
+@Tag(name = "Учёт тренировок", description = "Абонементы, тарифы и оплаты каяк-клуба")
 public class PricingRateController {
     private final PricingRateService pricingRateService;
 

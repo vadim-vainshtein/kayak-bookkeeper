@@ -10,7 +10,6 @@ public record ChargeView(
         long allocated,
         LocalDate chargedAt,
         String description,
-        Long subscriptionId,
-        Long attendanceId
+        Long subscriptionId
 ) {
 }

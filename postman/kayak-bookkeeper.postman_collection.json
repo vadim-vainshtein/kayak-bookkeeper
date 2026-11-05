@@ -18,10 +18,6 @@
       "value": ""
     },
     {
-      "key": "sessionId",
-      "value": ""
-    },
-    {
       "key": "rateId",
       "value": ""
     },
@@ -288,52 +284,6 @@
           "request": {
             "method": "POST",
             "url": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/complete"
-          }
-        }
-      ]
-    },
-    {
-      "name": "Посещения",
-      "item": [
-        {
-          "name": "Перекличка",
-          "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/api/sessions/{{sessionId}}/roster"
-          }
-        },
-        {
-          "name": "Отметить отсутствие",
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\"personId\":{{personId}},\"status\":\"ABSENT\"}"
-            },
-            "url": "{{baseUrl}}/api/sessions/{{sessionId}}/attendance"
-          }
-        },
-        {
-          "name": "Добавить разового посетителя",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\"personId\":{{personId}}}"
-            },
-            "url": "{{baseUrl}}/api/sessions/{{sessionId}}/drop-ins"
           }
         }
       ]

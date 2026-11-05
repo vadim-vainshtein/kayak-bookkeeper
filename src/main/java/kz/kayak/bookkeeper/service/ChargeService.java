@@ -43,7 +43,7 @@ public class ChargeService {
     public ChargeView createManualCharge(ManualChargeRequest r) {
         Person p = get(people, r.personId(), "Person");
         Subscription s = r.subscriptionId() == null ? null : get(subscriptions, r.subscriptionId(), "Subscription");
-        return views.chargeView(charges.save(new Charge(p, s, null, ChargeType.MANUAL, r.amount(), r.chargedAt(), r.description())));
+        return views.chargeView(charges.save(new Charge(p, s, ChargeType.MANUAL, r.amount(), r.chargedAt(), r.description())));
     }
 
     @Transactional
@@ -72,7 +72,7 @@ public class ChargeService {
     }
 
     private void syncAutomaticFee(Charge c, long amount) {
-        if (c.getSubscription() == null || c.getType() == ChargeType.MANUAL || c.getType() == ChargeType.DROP_IN)
+        if (c.getSubscription() == null || c.getType() == ChargeType.MANUAL)
             return;
         members.findBySubscriptionAndPerson(c.getSubscription(), c.getPerson()).ifPresent(member -> member.editAutomaticFee(c.getType(), amount));
     }

@@ -7,7 +7,6 @@ import Users from '../src/features/account/Users.jsx';
 import People from '../src/features/people/People.jsx';
 import Rates from '../src/features/rates/Rates.jsx';
 import Subscriptions from '../src/features/subscriptions/Subscriptions.jsx';
-import AttendancePanel from '../src/features/attendance/AttendancePanel.jsx';
 import LedgerDetails from '../src/features/ledger/LedgerDetails.jsx';
 
 const event = () => ({ preventDefault() {} });
@@ -40,19 +39,16 @@ test('read-only screens preserve club details and navigation while removing muta
     assert.equal(rates.root.findAllByType('button').length, 0);
     assert.equal(rates.root.findAllByType('form').length, 0);
 
-    let rosterCalls = 0;
     const subscriptions = await render(h(Subscriptions, {
         readOnly: true, people: [], subscriptions: [subscription],
-        loadRoster: async () => { rosterCalls++; return { capacity: 8, vacanciesForDropIns: 0, attendance: [] }; },
     }));
     await act(async () => subscriptions.root.findByProps({ className: 'subscription ' }).props.onClick());
     assert.ok(text(subscriptions).includes('Описание'));
     assert.equal(button(subscriptions, 'Редактировать'), undefined);
     assert.equal(button(subscriptions, 'Создать абонемент'), undefined);
     assert.equal(button(subscriptions, 'Завершить абонемент'), undefined);
-    await act(async () => button(subscriptions, 'Перекличка').props.onClick());
-    assert.equal(rosterCalls, 1);
-    assert.equal(button(subscriptions, 'Сохранить отметки'), undefined);
+    assert.equal(button(subscriptions, 'Перекличка'), undefined);
+    assert.ok(text(subscriptions).includes('Расписание'));
 });
 
 test('read-only people search uses names only even when private details are supplied', async () => {
@@ -84,23 +80,6 @@ test('admin people search and editing retain contacts and personal notes', async
     assert.ok(button(renderer, 'Сохранить'));
 });
 
-test('read-only attendance shows recorded statuses and drop-ins without editable inputs', async () => {
-    const renderer = await render(h(AttendancePanel, {
-        readOnly: true, session: subscription.sessions[0], people: [],
-        roster: { capacity: 8, vacanciesForDropIns: 1, attendance: [
-            { personId: 1, personName: 'Алия', type: 'SUBSCRIPTION', status: 'PLANNED' },
-            { personId: 2, personName: 'Илья', type: 'SUBSCRIPTION', status: 'ABSENT' },
-            { personId: 3, personName: 'Дина', type: 'DROP_IN', status: 'PRESENT' },
-        ] },
-    }));
-    assert.ok(text(renderer).includes('Не отмечен'));
-    assert.ok(text(renderer).includes('Отсутствовал'));
-    assert.ok(text(renderer).includes('Дина'));
-    assert.equal(renderer.root.findAllByType('input').length, 0);
-    assert.equal(renderer.root.findAllByType('select').length, 0);
-    assert.equal(button(renderer, 'Сохранить отметки'), undefined);
-    assert.equal(button(renderer, 'Добавить разового'), undefined);
-});
 
 test('read-only ledger keeps charges payments and allocations without write controls', async () => {
     const renderer = await render(h(LedgerDetails, {

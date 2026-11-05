@@ -17,7 +17,6 @@ import useInlineValidation from './hooks/useInlineValidation.js';
 import { createPeopleActions } from './features/people/peopleActions.js';
 import { createRateActions } from './features/rates/rateActions.js';
 import { createSubscriptionActions } from './features/subscriptions/subscriptionActions.js';
-import { createAttendanceActions } from './features/attendance/attendanceActions.js';
 import { createLedgerActions } from './features/ledger/ledgerActions.js';
 import { createAccountActions } from './features/account/accountActions.js';
 
@@ -44,7 +43,6 @@ function ClubApp({ auth }) {
     const { createRate, endRate } = createRateActions({ api, submit, load });
     const { createSubscription, previewSubscriptionUpdate, updateSubscription, finalize, complete } =
         createSubscriptionActions({ api, submit, load, run, setError });
-    const { loadRoster, markAttendance, addDropIn } = createAttendanceActions({ api, run, refreshBalances });
     const { addCharge, saveCharge, deleteCharge, addPayment, allocatePayment, savePayment, cancelAllocation } = createLedgerActions({
         api,
         run,
@@ -67,9 +65,6 @@ function ClubApp({ auth }) {
                 preview={previewSubscriptionUpdate}
                 finalize={finalize}
                 complete={complete}
-                loadRoster={loadRoster}
-                markAttendance={markAttendance}
-                addDropIn={addDropIn}
                 submitting={submitting}
             />
         ),

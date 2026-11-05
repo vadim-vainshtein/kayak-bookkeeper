@@ -5,7 +5,6 @@ export default function SubscriptionDetails({
     readOnly = false,
     selected,
     openEdit,
-    openAttendance,
     finalize,
     complete,
     submitting,
@@ -26,11 +25,6 @@ export default function SubscriptionDetails({
                 {selected.sessions.map((session) => (
                     <li key={session.id} className="session-row">
                         <span>{formatDate(session.startsAt)}</span>
-                        {selected.status !== 'DRAFT' && (
-                            <button type="button" onClick={() => openAttendance(session)}>
-                                Перекличка
-                            </button>
-                        )}
                     </li>
                 ))}
             </ul>

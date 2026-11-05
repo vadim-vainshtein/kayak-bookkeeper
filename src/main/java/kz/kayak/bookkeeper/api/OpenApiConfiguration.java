@@ -13,7 +13,7 @@ class OpenApiConfiguration {
         return new OpenAPI().info(new Info()
                 .title("Kayak Bookkeeper API")
                 .version("v1")
-                .description("API для учёта тренировочных групп, посещений и оплат каяк-клуба.")
+                .description("API для учёта тренировочных групп и оплат каяк-клуба.")
                 .license(new License().name("Private API")));
     }
 }

@@ -70,8 +70,7 @@ class UserRolesApiTest {
                 List.of(LocalDate.of(2026, 11, 5).atTime(19, 0)), 1, "Ноябрь", null));
         charges.createManualCharge(new ManualChargeRequest(person.id(), 5_000, LocalDate.of(2026, 11, 1), "Тренировка", null));
         for (String path : List.of("/api/account", "/api/people", "/api/people/balances", "/api/people/" + person.id() + "/balance",
-                "/api/pricing-rates", "/api/subscriptions", "/api/subscriptions/" + subscription.id(),
-                "/api/sessions/" + subscription.sessions().getFirst().id() + "/roster", "/api/reports/financial", "/v3/api-docs", "/swagger-ui/index.html")) {
+                "/api/pricing-rates", "/api/subscriptions", "/api/subscriptions/" + subscription.id(), "/api/reports/financial", "/v3/api-docs", "/swagger-ui/index.html")) {
             mvc.perform(get(path).header("Authorization", MEMBER)).andExpect(status().isOk());
         }
         mvc.perform(get("/api/reports/financial").header("Authorization", MEMBER))
@@ -126,7 +125,7 @@ class UserRolesApiTest {
                 "POST /api/subscriptions", "POST /api/subscriptions/recurring", "POST /api/subscriptions/recurring-with-members",
                 "PUT /api/subscriptions/1/metadata", "PUT /api/subscriptions/1/draft", "PUT /api/subscriptions/1/finalized",
                 "POST /api/subscriptions/1/finalized-edit-preview", "POST /api/subscriptions/1/members", "POST /api/subscriptions/1/finalize", "POST /api/subscriptions/1/complete",
-                "PUT /api/sessions/1/attendance", "POST /api/sessions/1/drop-ins", "POST /api/charges", "PUT /api/charges/1",
+                "POST /api/charges", "PUT /api/charges/1",
                 "POST /api/payments", "POST /api/payments/with-allocation", "POST /api/payments/1/allocations",
                 "PATCH /api/payments/1", "DELETE /api/payments/1/allocations/1",
                 "PUT /api/account/password", "POST /api/users", "PATCH /api/future-endpoint", "DELETE /api/future-endpoint");

@@ -80,7 +80,7 @@ public class SubscriptionChargeReconciler {
         for (Map.Entry<MemberChargeKey, Long> entry : plan.fees().entrySet()) {
             if (entry.getValue() == 0 || actualFees.containsKey(entry.getKey())) continue;
             MemberChargeKey key = entry.getKey();
-            charges.save(new Charge(get(people, key.personId(), "Person"), subscription, null, key.type(), entry.getValue(), plan.chargedAt(), automaticChargeDescription(key.type())));
+            charges.save(new Charge(get(people, key.personId(), "Person"), subscription, key.type(), entry.getValue(), plan.chargedAt(), automaticChargeDescription(key.type())));
             actualFees.put(key, entry.getValue());
         }
         sessions.deleteBySubscription(subscription);
@@ -88,7 +88,11 @@ public class SubscriptionChargeReconciler {
         subscription.updateMetadata(request.title(), request.description());
         subscription.updateCapacity(request.capacity());
         subscription.updatePoolRentalAmount(plan.poolRentalAmount());
-        request.startsAt().stream().sorted().forEach(startsAt -> sessions.save(new TrainingSession(subscription, startsAt)));
+        request.startsAt().stream().sorted().forEach(startsAt -> {
+            TrainingSession session = new TrainingSession(subscription, startsAt);
+            session.snapshotPoolRental(plan.sessionRentals().get(startsAt));
+            sessions.save(session);
+        });
         for (int index = 0; index < request.members().size(); index++) {
             MemberRequest member = request.members().get(index);
             Person person = plan.people().get(index);
@@ -98,7 +102,7 @@ public class SubscriptionChargeReconciler {
     }
 
     private boolean automaticSubscriptionCharge(Charge charge) {
-        return charge.getType() != ChargeType.MANUAL && charge.getType() != ChargeType.DROP_IN;
+        return charge.getType() != ChargeType.MANUAL;
     }
 
     private String automaticChargeDescription(ChargeType type) {

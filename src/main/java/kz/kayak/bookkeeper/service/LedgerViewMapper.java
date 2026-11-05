@@ -29,6 +29,6 @@ public class LedgerViewMapper {
     }
 
     public ChargeView chargeView(Charge c) {
-        return new ChargeView(c.getId(), c.getType(), c.getAmount(), charges.allocatedFor(c), c.getChargedAt(), c.getDescription(), c.getSubscription() == null ? null : c.getSubscription().getId(), c.getAttendance() == null ? null : c.getAttendance().getId());
+        return new ChargeView(c.getId(), c.getType(), c.getAmount(), charges.allocatedFor(c), c.getChargedAt(), c.getDescription(), c.getSubscription() == null ? null : c.getSubscription().getId());
     }
 }

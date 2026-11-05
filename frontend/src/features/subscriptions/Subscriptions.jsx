@@ -1,7 +1,5 @@
 import { useState } from 'react';
 import { statusLabels } from '../../shared/labels.js';
-import AttendancePanel from '../attendance/AttendancePanel.jsx';
-import useRoster from '../attendance/useRoster.js';
 import CreateSubscriptionDialog from './CreateSubscriptionDialog.jsx';
 import EditSubscriptionDialog from './EditSubscriptionDialog.jsx';
 import SubscriptionDetails from './SubscriptionDetails.jsx';
@@ -15,43 +13,12 @@ export default function Subscriptions({
     preview,
     finalize,
     complete,
-    loadRoster,
-    markAttendance,
-    addDropIn,
     submitting,
 }) {
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState(false);
     const [selectedId, setSelectedId] = useState(null);
     const selected = subscriptions.find((subscription) => subscription.id === selectedId);
-    const rosterState = useRoster({ loadRoster, markAttendance, addDropIn });
-    const {
-        attendanceSession,
-        roster,
-        rosterLoading,
-        rosterError,
-        refreshRoster,
-        openAttendance,
-        closeAttendance,
-        saveAttendance,
-        createDropIn,
-    } = rosterState;
-    if (attendanceSession)
-        return (
-            <AttendancePanel
-                readOnly={readOnly || selected?.status === 'COMPLETED'}
-                session={attendanceSession}
-                roster={roster}
-                loading={rosterLoading}
-                error={rosterError}
-                people={people}
-                submitting={submitting}
-                onBack={closeAttendance}
-                onRetry={() => refreshRoster(attendanceSession.id)}
-                onSaveAttendance={saveAttendance}
-                onAddDropIn={createDropIn}
-            />
-        );
     return (
         <div className="grid subscriptions-grid">
             <section className="card">
@@ -91,7 +58,6 @@ export default function Subscriptions({
                     readOnly={readOnly}
                     selected={selected}
                     openEdit={() => setEditing(true)}
-                    openAttendance={openAttendance}
                     finalize={finalize}
                     complete={complete}
                     submitting={submitting}

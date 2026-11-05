@@ -42,7 +42,7 @@ export default function Overview({ people, subscriptions, rates, go, readOnly = 
             </section>}
             {readOnly && <section className="card wide">
                 <h2>Данные клуба</h2>
-                <p className="muted">Вам доступны все данные клуба, включая посещаемость, начисления, оплаты и финансовую отчётность.</p>
+                <p className="muted">Вам доступны все данные клуба, включая начисления, оплаты и финансовую отчётность.</p>
                 <button onClick={() => go('reports')}>К финансовым отчётам</button>
             </section>}
         </div>

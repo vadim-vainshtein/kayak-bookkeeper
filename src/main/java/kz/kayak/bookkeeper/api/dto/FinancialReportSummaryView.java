@@ -8,6 +8,8 @@ public record FinancialReportSummaryView(
         long allocatedPayments,
         long outstanding,
         long poolRentalCost,
-        long clubProfit
+        long clubProfit,
+        @Schema(description = "Оплаты, полученные к текущей дате, минус аренда начавшихся тренировок")
+        long cashBalance
 ) {
 }

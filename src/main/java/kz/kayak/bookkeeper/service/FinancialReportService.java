@@ -1,6 +1,8 @@
 package kz.kayak.bookkeeper.service;
 
 import jakarta.transaction.Transactional;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -20,6 +22,8 @@ import kz.kayak.bookkeeper.domain.PaymentAllocation;
 import kz.kayak.bookkeeper.domain.Subscription;
 import kz.kayak.bookkeeper.domain.SubscriptionMember;
 import kz.kayak.bookkeeper.domain.SubscriptionStatus;
+import kz.kayak.bookkeeper.domain.TrainingSession;
+import kz.kayak.bookkeeper.repository.TrainingSessionRepository;
 import kz.kayak.bookkeeper.repository.ChargeRepository;
 import kz.kayak.bookkeeper.repository.PaymentAllocationRepository;
 import kz.kayak.bookkeeper.repository.SubscriptionMemberRepository;
@@ -35,16 +39,22 @@ public class FinancialReportService {
     private final SubscriptionMemberRepository members;
     private final ChargeRepository charges;
     private final PaymentAllocationRepository allocations;
+    private final TrainingSessionRepository sessions;
+    private final Clock clock;
 
     public FinancialReportService(
             SubscriptionRepository subscriptions,
             SubscriptionMemberRepository members,
             ChargeRepository charges,
-            PaymentAllocationRepository allocations) {
+            PaymentAllocationRepository allocations,
+            TrainingSessionRepository sessions,
+            Clock clock) {
         this.subscriptions = subscriptions;
         this.members = members;
         this.charges = charges;
         this.allocations = allocations;
+        this.sessions = sessions;
+        this.clock = clock;
     }
 
     @Transactional
@@ -54,6 +64,7 @@ public class FinancialReportService {
 
     @Transactional
     public FinancialReportView financialReport(List<Long> subscriptionIds, SubscriptionStatus status) {
+        LocalDateTime now = LocalDateTime.now(clock);
         List<Subscription> reportSubscriptions = selectedSubscriptions(subscriptionIds).stream()
                 .filter(subscription -> status == null || subscription.getStatus() == status)
                 .toList();
@@ -70,14 +81,18 @@ public class FinancialReportService {
         Map<Long, List<SubscriptionMember>> membersBySubscription = reportSubscriptions.isEmpty() ? Map.of()
                 : members.findBySubscriptionInWithSubscriptionAndPerson(reportSubscriptions).stream()
                 .collect(Collectors.groupingBy(member -> member.getSubscription().getId()));
+        Map<Long, List<TrainingSession>> sessionsBySubscription = reportSubscriptions.isEmpty() ? Map.of()
+                : sessions.findBySubscriptionInWithSubscription(reportSubscriptions).stream()
+                .collect(Collectors.groupingBy(session -> session.getSubscription().getId()));
         List<SubscriptionFinancialReportView> subscriptionRows = reportSubscriptions.stream()
                 .map(subscription -> subscriptionReport(subscription,
                         chargesBySubscription.getOrDefault(subscription.getId(), List.of()),
                         allocatedByCharge, membersBySubscription.getOrDefault(subscription.getId(), List.of()),
-                        allAllocations))
+                        allAllocations, sessionsBySubscription.getOrDefault(subscription.getId(), List.of()), now))
                 .sorted(Comparator.comparing(SubscriptionFinancialReportView::title,
                         Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)).thenComparing(SubscriptionFinancialReportView::subscriptionId))
                 .toList();
+        long cashBalance = subscriptionRows.stream().mapToLong(SubscriptionFinancialReportView::cashBalance).sum();
         long charged = subscriptionRows.stream().mapToLong(SubscriptionFinancialReportView::charged).sum();
         long allocated = subscriptionRows.stream().mapToLong(SubscriptionFinancialReportView::allocatedPayments).sum();
         long outstanding = subscriptionRows.stream().mapToLong(SubscriptionFinancialReportView::outstanding).sum();
@@ -89,7 +104,7 @@ public class FinancialReportService {
                         String.CASE_INSENSITIVE_ORDER).thenComparing(UnassignedChargeFinancialReportView::chargeId))
                 .toList();
         return new FinancialReportView(new FinancialReportSummaryView(charged, allocated, outstanding,
-                poolRentalCost, allocated - poolRentalCost), subscriptionRows, unassignedCharges);
+                poolRentalCost, allocated - poolRentalCost, cashBalance), subscriptionRows, unassignedCharges);
     }
 
     private List<Subscription> selectedSubscriptions(List<Long> subscriptionIds) {
@@ -103,7 +118,9 @@ public class FinancialReportService {
                                                                    List<Charge> subscriptionCharges,
                                                                    Map<Long, Long> allocatedByCharge,
                                                                    List<SubscriptionMember> subscriptionMembers,
-                                                                   List<PaymentAllocation> allAllocations) {
+                                                                   List<PaymentAllocation> allAllocations,
+                                                                   List<TrainingSession> subscriptionSessions,
+                                                                   LocalDateTime now) {
         long charged = subscriptionCharges.stream().mapToLong(Charge::getAmount).sum();
         long allocated = subscriptionCharges.stream()
                 .mapToLong(charge -> allocatedByCharge.getOrDefault(charge.getId(), 0L)).sum();
@@ -116,9 +133,14 @@ public class FinancialReportService {
                         .thenComparing(SubscriptionPaymentFinancialReportView::paymentId)
                         .thenComparing(SubscriptionPaymentFinancialReportView::chargeId))
                 .toList();
+        long received = paymentDetails.stream().filter(payment -> !payment.paidAt().isAfter(now.toLocalDate()))
+                .mapToLong(SubscriptionPaymentFinancialReportView::allocated).sum();
+        long spent = subscription.getStatus() == SubscriptionStatus.DRAFT ? 0 : subscriptionSessions.stream()
+                .filter(session -> !session.getStartsAt().isAfter(now))
+                .mapToLong(session -> Objects.requireNonNullElse(session.getPoolRentalAmount(), 0L)).sum();
         return new SubscriptionFinancialReportView(subscription.getId(), subscription.getTitle(),
                 subscription.getStatus(), subscriptionMembers.size(), charged, allocated, charged - allocated,
-                poolRentalCost, allocated - poolRentalCost, paymentDetails);
+                poolRentalCost, allocated - poolRentalCost, received - spent, paymentDetails);
     }
 
     private SubscriptionPaymentFinancialReportView subscriptionPaymentReport(PaymentAllocation allocation) {

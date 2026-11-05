@@ -1,11 +1,9 @@
 package kz.kayak.bookkeeper.service;
 
-import kz.kayak.bookkeeper.api.dto.AttendanceView;
 import kz.kayak.bookkeeper.api.dto.MemberView;
 import kz.kayak.bookkeeper.api.dto.PersonView;
 import kz.kayak.bookkeeper.api.dto.RateView;
 import kz.kayak.bookkeeper.api.dto.SessionView;
-import kz.kayak.bookkeeper.domain.Attendance;
 import kz.kayak.bookkeeper.domain.Person;
 import kz.kayak.bookkeeper.domain.PricingRate;
 import kz.kayak.bookkeeper.domain.SubscriptionMember;
@@ -30,7 +28,4 @@ final class EntityViews {
         return new SessionView(s.getId(), s.getStartsAt());
     }
 
-    static AttendanceView attendanceView(Attendance a) {
-        return new AttendanceView(a.getId(), a.getPerson().getId(), a.getPerson().getFullName(), a.getType(), a.getStatus());
-    }
 }

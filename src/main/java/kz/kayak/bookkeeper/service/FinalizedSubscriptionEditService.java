@@ -15,7 +15,6 @@ import kz.kayak.bookkeeper.api.dto.MemberRequest;
 import kz.kayak.bookkeeper.api.dto.SubscriptionView;
 import kz.kayak.bookkeeper.domain.Subscription;
 import kz.kayak.bookkeeper.domain.TrainingSession;
-import kz.kayak.bookkeeper.repository.AttendanceRepository;
 import kz.kayak.bookkeeper.repository.SubscriptionMemberRepository;
 import org.springframework.stereotype.Service;
 
@@ -23,7 +22,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class FinalizedSubscriptionEditService {
     private final SubscriptionMemberRepository members;
-    private final AttendanceRepository attendance;
     private final SubscriptionAccess access;
     private final SubscriptionQueryService views;
     private final SubscriptionFeePlanner planner;
@@ -31,13 +29,11 @@ public class FinalizedSubscriptionEditService {
 
     public FinalizedSubscriptionEditService(
             SubscriptionMemberRepository members,
-            AttendanceRepository attendance,
             SubscriptionAccess access,
             SubscriptionQueryService views,
             SubscriptionFeePlanner planner,
             SubscriptionChargeReconciler reconciler) {
         this.members = members;
-        this.attendance = attendance;
         this.access = access;
         this.views = views;
         this.planner = planner;
@@ -65,8 +61,6 @@ public class FinalizedSubscriptionEditService {
             subscription.updateCapacity(r.capacity());
             return views.subscriptionView(subscription);
         }
-        if (attendance.existsByTrainingSessionSubscription(subscription))
-            throw new DomainException("Cannot change schedule or members after attendance has been recorded");
         SubscriptionFeePlan plan = planner.plan(r);
         List<AllocatedPaymentWarningView> warnings = reconciler.allocatedPaymentWarnings(subscription, plan);
         if (!warnings.isEmpty() && !r.confirmAllocatedPayments())

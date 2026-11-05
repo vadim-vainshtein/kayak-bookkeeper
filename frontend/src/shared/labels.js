@@ -1,6 +1,5 @@
 export const rateLabels = {
     POOL_RENTAL: 'Аренда бассейна',
-    DROP_IN: 'Разовое посещение',
     SKIRT_RENTAL: 'Аренда юбки',
     PADDLE_RENTAL: 'Аренда весла',
     KAYAK_RENTAL: 'Аренда каяка',
@@ -12,7 +11,6 @@ export const chargeLabels = {
     SKIRT_RENT: 'Аренда юбки',
     PADDLE_RENT: 'Аренда весла',
     KAYAK_RENT: 'Аренда каяка',
-    DROP_IN: 'Разовое посещение',
     MANUAL: 'Ручное начисление',
 };
 export const days = [

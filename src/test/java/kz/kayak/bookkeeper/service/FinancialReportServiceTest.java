@@ -59,7 +59,7 @@ class FinancialReportServiceTest {
         PaymentView unassignedPayment = paymentService.createPayment(new PaymentRequest(person.id(), 10, date, PaymentMethod.CASH, null));
         paymentService.allocatePayment(unassignedPayment.id(), new AllocationRequest(unassigned.id(), 10));
         FinancialReportView report = financialReportService.financialReport(List.of());
-        assertThat(report.summary()).isEqualTo(new FinancialReportSummaryView(200, 100, 100, 200, -100));
+        assertTotals(report.summary(), 200, 100, 100, 200, -100);
         assertThat(report.subscriptions()).extracting(SubscriptionFinancialReportView::subscriptionId).containsExactlyInAnyOrder(first.id(), second.id());
         assertThat(report.subscriptions()).filteredOn(row -> row.subscriptionId().equals(first.id())).singleElement()
         .satisfies(row -> assertThat(row.payments()).singleElement().satisfies(allocation -> {
@@ -102,7 +102,7 @@ class FinancialReportServiceTest {
         paymentService.allocatePayment(secondPayment.id(), new AllocationRequest(secondCharge.id(), 100));
         FinancialReportView selected = financialReportService.financialReport(List.of(first.id()));
         assertThat(finalizedFirst.poolRentalAmount()).isEqualTo(100);
-        assertThat(selected.summary()).isEqualTo(new FinancialReportSummaryView(102, 34, 68, 100, -66));
+        assertTotals(selected.summary(), 102, 34, 68, 100, -66);
         assertThat(selected.subscriptions()).singleElement().satisfies(row -> assertThat(row).extracting(SubscriptionFinancialReportView::allocatedPayments, SubscriptionFinancialReportView::poolRentalCost, SubscriptionFinancialReportView::clubProfit).containsExactly(34L, 100L, -66L));
     }
 
@@ -123,5 +123,10 @@ class FinancialReportServiceTest {
         assertThat(personService.listPeople()).extracting(PersonView::fullName).containsExactly("Алина","алия","Алия","Борис","Зоя");
         assertThat(balanceService.listPersonBalances()).extracting(PersonBalanceSummaryView::fullName).containsExactly("Алина","алия","Алия","Борис","Зоя");
         assertThat(subscriptionQueryService.getSubscription(subscription.id()).members()).extracting(MemberView::personName).containsExactly("Алина","алия","Алия","Борис","Зоя");
+    }
+    private void assertTotals(FinancialReportSummaryView summary, long charged, long paid, long outstanding, long rent, long profit) {
+        assertThat(summary).extracting(FinancialReportSummaryView::charged, FinancialReportSummaryView::allocatedPayments,
+                FinancialReportSummaryView::outstanding, FinancialReportSummaryView::poolRentalCost,
+                FinancialReportSummaryView::clubProfit).containsExactly(charged, paid, outstanding, rent, profit);
     }
 }

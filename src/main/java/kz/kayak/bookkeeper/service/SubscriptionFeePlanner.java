@@ -28,8 +28,10 @@ public class SubscriptionFeePlanner {
             throw new DomainException("Training dates must be distinct");
         List<Person> selectedPeople = memberSelection.validateMembers(request.members(), request.capacity());
         List<LocalDateTime> startsAt = request.startsAt().stream().sorted().toList();
-        long poolRentalAmount = startsAt.stream().mapToLong(value -> pricing.applicableAmount(RateCode.POOL_RENTAL, value.toLocalDate())).sum();
-        long poolShare = startsAt.stream().mapToLong(value -> ceilDiv(pricing.applicableAmount(RateCode.POOL_RENTAL, value.toLocalDate()), selectedPeople.size())).sum();
+        Map<LocalDateTime, Long> sessionRentals = new HashMap<>();
+        startsAt.forEach(value -> sessionRentals.put(value, pricing.applicableAmount(RateCode.POOL_RENTAL, value.toLocalDate())));
+        long poolRentalAmount = sessionRentals.values().stream().mapToLong(Long::longValue).sum();
+        long poolShare = startsAt.stream().mapToLong(value -> ceilDiv(sessionRentals.get(value), selectedPeople.size())).sum();
         Map<MemberChargeKey, Long> fees = new HashMap<>();
         for (int index = 0; index < request.members().size(); index++) {
             MemberRequest member = request.members().get(index);
@@ -39,7 +41,7 @@ public class SubscriptionFeePlanner {
             fees.put(new MemberChargeKey(personId, ChargeType.PADDLE_RENT), member.usesPaddle() ? pricing.sumRateAt(startsAt, RateCode.PADDLE_RENTAL) : 0);
             fees.put(new MemberChargeKey(personId, ChargeType.KAYAK_RENT), member.usesKayak() ? pricing.sumRateAt(startsAt, RateCode.KAYAK_RENTAL) : 0);
         }
-        return new SubscriptionFeePlan(selectedPeople, fees, poolRentalAmount, startsAt.getFirst().toLocalDate());
+        return new SubscriptionFeePlan(selectedPeople, fees, poolRentalAmount, Map.copyOf(sessionRentals), startsAt.getFirst().toLocalDate());
     }
 
     private static long ceilDiv(long v, long d) {

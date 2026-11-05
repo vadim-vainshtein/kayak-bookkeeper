@@ -32,7 +32,6 @@ test('charge titles identify subscriptions, retain custom descriptions and handl
     assert.equal(chargeTitle({ type: 'MANUAL', description: 'Возврат' }, subscriptions), 'Возврат');
     assert.equal(chargeTitle(charges[0]), 'Бассейн · Абонемент #1');
     assert.equal(chargeTitle(charges[0], [{ id: 1, title: '' }]), 'Бассейн · Абонемент #1');
-    assert.equal(chargeTitle({ type: 'DROP_IN', description: 'Разовое посещение' }), 'Разовое посещение');
 });
 
 test('ledger headings and allocation history show compact names with subscriptions', async () => {

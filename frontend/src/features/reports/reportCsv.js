@@ -1,4 +1,14 @@
-import { chargeLabels, methodLabels, statusLabels } from '../../shared/labels.js';
+import { chargeLabels, statusLabels } from '../../shared/labels.js';
+
+function personTotals(payments) {
+    const people = new Map();
+    for (const payment of payments) {
+        const person = people.get(payment.personId) || { personName: payment.personName, allocated: 0 };
+        person.allocated += payment.allocated;
+        people.set(payment.personId, person);
+    }
+    return [...people.values()];
+}
 
 const csvCell = (value) => '"' + String(value ?? '').replaceAll('"', '""') + '"';
 
@@ -14,6 +24,7 @@ export function financialReportCsv(report, subscriptionLabel, statusLabel = 'В�
         ['Недостача', report.summary.outstanding],
         ['Аренда бассейна', report.summary.poolRentalCost],
         ['Прибыль клуба', report.summary.clubProfit],
+        ['Касса сейчас', report.summary.cashBalance],
         [],
         ['Абонементы'],
         [
@@ -25,6 +36,7 @@ export function financialReportCsv(report, subscriptionLabel, statusLabel = 'В�
             'Недостача, ₸',
             'Аренда бассейна, ₸',
             'Прибыль, ₸',
+            'Касса сейчас, ₸',
         ],
         ...report.subscriptions.map((item) => [
             item.title || 'Без названия',
@@ -35,26 +47,19 @@ export function financialReportCsv(report, subscriptionLabel, statusLabel = 'В�
             item.outstanding,
             item.poolRentalCost,
             item.clubProfit,
+            item.cashBalance,
         ]),
         [],
         ['Разбивка оплат по абонементам'],
         [
             'Абонемент',
             'Каякер',
-            'Дата оплаты',
-            'Способ оплаты',
-            'Примечание к оплате',
-            'Начисление',
             'Оплачено, ₸',
         ],
         ...report.subscriptions.flatMap((subscription) =>
-            subscription.payments.map((payment) => [
+            personTotals(subscription.payments).map((payment) => [
                 subscription.title || 'Без названия',
                 payment.personName,
-                payment.paidAt,
-                methodLabels[payment.method],
-                payment.paymentNote || '',
-                payment.chargeDescription || 'Без описания',
                 payment.allocated,
             ]),
         ),

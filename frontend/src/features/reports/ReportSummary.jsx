@@ -35,6 +35,12 @@ export default function ReportSummary({ report }) {
                     {money(report.summary.clubProfit)}
                 </strong>
             </article>
+            <article>
+                <span>Касса сейчас</span>
+                <strong className={report.summary.cashBalance < 0 ? 'debt' : 'credit'}>
+                    {money(report.summary.cashBalance)}
+                </strong>
+            </article>
         </section>
     );
 }

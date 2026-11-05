@@ -11,7 +11,7 @@ Database migrations and deployment configuration are outside this refactoring.
 
 1. Establish the existing backend test and frontend build baseline.
 2. Extract backend services by use case: people, pricing, subscriptions,
-   finalized subscription edits, attendance, charges, payments, balances and reports.
+   finalized subscription edits, charges, payments, balances and reports.
    Route HTTP requests through focused controllers. Reorganize service tests around
    these responsibilities while retaining API and concurrency regression coverage.
 3. Extract frontend feature screens, forms and dialogs. Share only common UI,
@@ -28,7 +28,6 @@ Database migrations and deployment configuration are outside this refactoring.
 - Concurrent allocations and charge edits cannot overallocate a payment/charge.
 - Finalized subscription changes preserve unaffected charges and require
   confirmation before changing allocated payments.
-- Attendance and drop-in capacity rules remain unchanged.
 - Financial reports continue to use allocation totals and subscription snapshots.
 - UI mutations retain their submit lock and success/error reporting.
 - Selecting a different person cannot display a late balance response for the
@@ -46,14 +45,14 @@ second application framework.
 ## Resulting boundaries
 
 - `api`: separate HTTP controllers for people, pricing, subscriptions,
-  attendance, charges, payments, balances, financial reports and accounts.
+  charges, payments, balances, financial reports and accounts.
 - `api/dto`: 38 individually named request/response records, retaining the
   original JSON fields, constraints, constructor overloads and schema names.
 - `service`: use-case services backed by small subscription access, member
   selection, fee planning, charge reconciliation and view mapping helpers.
   There is no forwarding bookkeeping facade or replacement service monolith.
 - `frontend/src/features`: feature screens, their forms/dialogs, request actions
-  and pure models. Subscription drafts, allocation calculations, attendance
+  and pure models. Subscription drafts, allocation calculations,
   ordering and report export can be tested separately from rendering.
 - `frontend/src/hooks`: authentication, loading, mutation coordination and
   selected balance/report state. `App.jsx` composes these with navigation.

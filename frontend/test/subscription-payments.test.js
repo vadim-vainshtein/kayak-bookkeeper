@@ -13,7 +13,7 @@ const payments = [
     { personId: 1, personName: 'Тамара', paymentId: 12, chargeId: 23, paidAt: '2026-11-03', method: 'TRANSFER', allocated: 400, chargeDescription: 'Аренда весла' },
 ];
 const report = {
-    subscriptions: [1, 2].map((subscriptionId) => ({ subscriptionId, title: `Абонемент ${subscriptionId}`, status: 'FINALIZED', memberCount: 2, charged: 10000, allocatedPayments: 9850, outstanding: 150, poolRentalCost: 7000, clubProfit: 2850, payments })),
+    subscriptions: [1, 2].map((subscriptionId) => ({ subscriptionId, title: `Абонемент ${subscriptionId}`, status: 'FINALIZED', memberCount: 2, charged: 10000, allocatedPayments: 9850, outstanding: 150, poolRentalCost: 7000, clubProfit: 2850, cashBalance: 5850, payments })),
 };
 const render = async () => {
     let renderer;
@@ -35,7 +35,7 @@ test('report subscriptions use ledger disclosure buttons while numeric columns a
     const subscriptions = () => rows(renderer, 'report-subscription-row');
     const disclosure = () => subscriptions().map(arrow);
     const originalNumbers = subscriptions()[0].findAllByType('td').slice(1).map(text);
-    assert.deepEqual(originalNumbers, ['2', money(10000), money(9850), money(150), money(7000), money(2850)]);
+    assert.deepEqual(originalNumbers, ['2', money(10000), money(9850), money(150), money(7000), money(2850), money(5850)]);
     for (const row of subscriptions()) {
         assert.equal(row.props.role, undefined);
         assert.equal(row.props.tabIndex, undefined);

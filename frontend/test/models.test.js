@@ -11,7 +11,6 @@ import {
     suggestedAllocation,
     validAllocation,
 } from '../src/features/ledger/allocation.js';
-import { attendanceMarks } from '../src/features/attendance/attendanceDraft.js';
 import { financialReportCsv } from '../src/features/reports/reportCsv.js';
 
 const subscription = {
@@ -74,20 +73,8 @@ test('allocation suggestions and validation respect both remaining limits', () =
     assert.equal(validAllocation(1, 20, null), false);
 });
 
-test('attendance marks exclude unchanged entries and send absences first to free seats', () => {
-    const members = [
-        { personId: 1, status: 'PLANNED' },
-        { personId: 2, status: 'PRESENT' },
-        { personId: 3, status: 'ABSENT' },
-    ];
-    assert.deepEqual(attendanceMarks(members, { 1: true, 2: false, 3: false }), [
-        { personId: 2, status: 'ABSENT' },
-        { personId: 1, status: 'PRESENT' },
-    ]);
-    assert.deepEqual(attendanceMarks(members.slice(1), { 2: true, 3: false }), []);
-});
 
-test('CSV exports allocation details without IDs and correctly escapes commas, quotes and newlines', () => {
+test('CSV exports per-person subscription totals without IDs and correctly escapes commas, quotes and newlines', () => {
     const csv = financialReportCsv(
         {
             summary: {
@@ -96,6 +83,7 @@ test('CSV exports allocation details without IDs and correctly escapes commas, q
                 outstanding: 70,
                 poolRentalCost: 20,
                 clubProfit: 10,
+                cashBalance: 25,
             },
             subscriptions: [
                 {
@@ -108,6 +96,7 @@ test('CSV exports allocation details without IDs and correctly escapes commas, q
                     outstanding: 70,
                     poolRentalCost: 20,
                     clubProfit: 10,
+                    cashBalance: 25,
                     payments: [
                         {
                             paymentId: 42002,
@@ -131,6 +120,7 @@ test('CSV exports allocation details without IDs and correctly escapes commas, q
                     outstanding: 70,
                     poolRentalCost: 20,
                     clubProfit: 10,
+                    cashBalance: 25,
                     payments: [
                         {
                             paymentId: 45005,
@@ -158,10 +148,10 @@ test('CSV exports allocation details without IDs and correctly escapes commas, q
     );
     assert.ok(csv.startsWith('\uFEFF'));
     assert.ok(csv.includes('"Клуб, ""Весло""\nНоябрь"'));
-    assert.ok(csv.includes('"Абонемент","Каякер","Дата оплаты","Способ оплаты","Примечание к оплате","Начисление","Оплачено, ₸"'));
-    assert.ok(csv.includes('"Клуб, ""Весло""\nНоябрь","Каякер","2026-11-02","Наличные","Первая, ""часть""\nоплаты","Бассейн","30"'));
-    assert.ok(csv.includes('"Без названия","Рассчитан","1","100","30","70","20","10"'));
-    assert.ok(csv.includes('"Без названия","Другой каякер","2026-11-03","Перевод","","Без описания","30"'));
-    assert.doesNotMatch(csv, /ID|41001|42002|43003|44004|45005|46006|Абонемент #|Начисление #/);
+    assert.ok(csv.includes('"Абонемент","Каякер","Оплачено, ₸"'));
+    assert.ok(csv.includes('"Клуб, ""Весло""\nНоябрь","Каякер","30"'));
+    assert.ok(csv.includes('"Без названия","Рассчитан","1","100","30","70","20","10","25"'));
+    assert.ok(csv.includes('"Без названия","Другой каякер","30"'));
+    assert.doesNotMatch(csv, /Дата оплаты|Способ оплаты|Примечание к оплате|Первая|2026-11-02|Бассейн|ID|41001|42002|43003|44004|45005|46006|Абонемент #|Начисление #/);
     assert.ok(csv.includes('"Ручное начисление","","5","0","5"'));
 });

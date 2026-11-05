@@ -15,6 +15,8 @@ public record SubscriptionFinancialReportView(
         long outstanding,
         long poolRentalCost,
         long clubProfit,
+        @Schema(description = "Оплаты, полученные к текущей дате, минус аренда начавшихся тренировок")
+        long cashBalance,
         List<SubscriptionPaymentFinancialReportView> payments
 ) {
 }

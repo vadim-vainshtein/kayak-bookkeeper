@@ -4,11 +4,9 @@ import { createElement as h } from 'react';
 import { act, create } from 'react-test-renderer';
 import Modal from '../src/components/Modal.jsx';
 import EditSubscriptionDialog from '../src/features/subscriptions/EditSubscriptionDialog.jsx';
-import AttendancePanel from '../src/features/attendance/AttendancePanel.jsx';
 import AllocationForm from '../src/features/ledger/AllocationForm.jsx';
 import SubscriptionReportTable from '../src/features/reports/SubscriptionReportTable.jsx';
 import usePersonBalance from '../src/hooks/usePersonBalance.js';
-import useRoster from '../src/features/attendance/useRoster.js';
 
 const event = () => ({ preventDefault() {} });
 const render = async (element, options) => {
@@ -123,39 +121,6 @@ test('failed preview keeps edit dialog open and never submits the update', async
     assert.equal(submitted, false);
 });
 
-test('attendance checkbox changes save absences before planned presences', async () => {
-    let saved;
-    const roster = {
-        capacity: 2,
-        vacanciesForDropIns: 0,
-        attendance: [
-            { personId: 1, personName: 'Первый', type: 'SUBSCRIPTION', status: 'PLANNED' },
-            { personId: 2, personName: 'Второй', type: 'SUBSCRIPTION', status: 'PRESENT' },
-        ],
-    };
-    const renderer = await render(
-        h(AttendancePanel, {
-            session: finalized.sessions[0],
-            roster,
-            people: [],
-            onSaveAttendance: async (marks) => {
-                saved = marks;
-            },
-        }),
-    );
-    await act(async () =>
-        renderer.root.findAllByType('input')[1].props.onChange({ target: { checked: false } }),
-    );
-    const save = renderer.root
-        .findAllByType('button')
-        .find((button) => button.children.includes('Сохранить отметки'));
-    assert.equal(save.props.disabled, false);
-    await act(async () => save.props.onClick());
-    assert.deepEqual(saved, [
-        { personId: 2, status: 'ABSENT' },
-        { personId: 1, status: 'PRESENT' },
-    ]);
-});
 
 test('existing payment allocation rejects overflow and closes only after successful allocation', async () => {
     const saved = [];
@@ -232,27 +197,4 @@ test('selected balance keeps refreshing with the latest API after credentials ch
     await act(async () => state.loadBalance(7));
     assert.equal(state.personId, 7);
     assert.equal(state.balance.version, 2);
-});
-
-test('roster hook ignores a response after the attendance screen closes', async () => {
-    let state, resolve;
-    function Harness() {
-        state = useRoster({
-            loadRoster: () =>
-                new Promise((yes) => {
-                    resolve = yes;
-                }),
-        });
-        return null;
-    }
-    await render(h(Harness));
-    await act(async () => state.openAttendance(finalized.sessions[0]));
-    assert.equal(state.rosterLoading, true);
-    await act(async () => state.closeAttendance());
-    await act(async () => {
-        resolve({ attendance: [] });
-    });
-    assert.equal(state.attendanceSession, null);
-    assert.equal(state.roster, null);
-    assert.equal(state.rosterLoading, false);
 });
