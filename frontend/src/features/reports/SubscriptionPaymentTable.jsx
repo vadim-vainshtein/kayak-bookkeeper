@@ -1,9 +1,10 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useId, useState } from 'react';
 import { formatDate, money } from '../../shared/format.js';
 import { methodLabels } from '../../shared/labels.js';
 
 export default function SubscriptionPaymentTable({ subscriptionId, payments }) {
     const [expandedPersonIds, setExpandedPersonIds] = useState([]);
+    const tableId = useId();
     const people = new Map();
     for (const payment of payments) {
         if (!people.has(payment.personId)) {
@@ -52,46 +53,40 @@ export default function SubscriptionPaymentTable({ subscriptionId, payments }) {
                 <table className="balance-table report-table report-payment-table">
                     <thead>
                         <tr>
-                            <th>Каякер</th>
-                            <th>Сумма</th>
+                            <th scope="col">Каякер</th>
+                            <th scope="col">Сумма</th>
                         </tr>
                     </thead>
                     <tbody>
                         {groups.map((person) => {
                             const expanded = expandedPersonIds.includes(person.personId);
-                            const detailsId = `subscription-${subscriptionId}-person-${person.personId}-payments`;
+                            const detailsId = `${tableId}-subscription-${subscriptionId}-person-${person.personId}-payments`;
                             return (
                                 <Fragment key={person.personId}>
-                                    <tr
-                                        className="report-person-row"
-                                        tabIndex="0"
-                                        role="button"
-                                        aria-expanded={expanded}
-                                        aria-controls={detailsId}
-                                        onClick={() => togglePerson(person.personId)}
-                                        onKeyDown={(event) => {
-                                            if (event.key === 'Enter' || event.key === ' ') {
-                                                event.preventDefault();
-                                                togglePerson(person.personId);
-                                            }
-                                        }}
-                                    >
+                                    <tr className="report-person-row">
                                         <td>
-                                            <strong>{person.personName}</strong>
-                                            <small>{expanded ? 'Скрыть оплаты' : 'Показать оплаты'}</small>
+                                            <div className="balance-person-heading">
+                                                <button type="button" className="balance-expand"
+                                                    aria-label={`${expanded ? 'Свернуть' : 'Развернуть'} оплаты каякера: ${person.personName}`}
+                                                    aria-expanded={expanded} aria-controls={detailsId}
+                                                    onClick={() => togglePerson(person.personId)}>
+                                                    <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                                                </button>
+                                                <strong>{person.personName}</strong>
+                                            </div>
                                         </td>
                                         <td>{money(person.allocated)}</td>
                                     </tr>
-                                    {expanded && (
-                                        <tr id={detailsId} className="report-person-details">
-                                            <td colSpan="2">
+                                    <tr id={detailsId} hidden={!expanded} className="report-person-details">
+                                        <td colSpan="2">
+                                            {expanded && (
                                                 <table className="balance-table report-table report-payment-table">
                                                     <thead>
                                                         <tr>
-                                                            <th>Дата оплаты</th>
-                                                            <th>Способ</th>
-                                                            <th>Начисление</th>
-                                                            <th>Сумма</th>
+                                                            <th scope="col">Дата оплаты</th>
+                                                            <th scope="col">Способ</th>
+                                                            <th scope="col">Начисление</th>
+                                                            <th scope="col">Сумма</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
@@ -115,9 +110,9 @@ export default function SubscriptionPaymentTable({ subscriptionId, payments }) {
                                                         ))}
                                                     </tbody>
                                                 </table>
-                                            </td>
-                                        </tr>
-                                    )}
+                                            )}
+                                        </td>
+                                    </tr>
                                 </Fragment>
                             );
                         })}

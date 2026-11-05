@@ -38,7 +38,7 @@ export default function Ledger({
     const outstanding = charges.filter((charge) => charge.amount > charge.allocated);
     return (
         <>
-            <PersonBalanceTable personBalances={personBalances} selectPerson={selectPerson} />
+            <PersonBalanceTable personBalances={personBalances} subscriptions={subscriptions} selectPerson={selectPerson} />
             <Modal
                 open={Boolean(personId)}
                 onClose={showPeople}

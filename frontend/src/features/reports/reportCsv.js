@@ -2,10 +2,11 @@ import { chargeLabels, methodLabels, statusLabels } from '../../shared/labels.js
 
 const csvCell = (value) => '"' + String(value ?? '').replaceAll('"', '""') + '"';
 
-export function financialReportCsv(report, subscriptionLabel) {
+export function financialReportCsv(report, subscriptionLabel, statusLabel = 'Все') {
     const rows = [
         ['Финансовый отчёт по абонементам'],
         ['Абонементы', subscriptionLabel],
+        ['Статус абонементов', statusLabel],
         [],
         ['Сводка', 'Сумма, ₸'],
         ['Начислено', report.summary.charged],
@@ -73,8 +74,8 @@ export function financialReportCsv(report, subscriptionLabel) {
     return '\uFEFF' + rows.map((row) => row.map(csvCell).join(',')).join('\n');
 }
 
-export function downloadFinancialReport(report, subscriptionLabel) {
-    const blob = new Blob([financialReportCsv(report, subscriptionLabel)], {
+export function downloadFinancialReport(report, subscriptionLabel, statusLabel = 'Все') {
+    const blob = new Blob([financialReportCsv(report, subscriptionLabel, statusLabel)], {
         type: 'text/csv;charset=utf-8',
     });
     const url = URL.createObjectURL(blob);

@@ -12,11 +12,16 @@ import kz.kayak.bookkeeper.api.dto.PersonRequest;
 import kz.kayak.bookkeeper.api.dto.PersonView;
 import kz.kayak.bookkeeper.api.dto.SubscriptionView;
 import kz.kayak.bookkeeper.domain.PaymentMethod;
+import kz.kayak.bookkeeper.domain.Subscription;
+import kz.kayak.bookkeeper.domain.SubscriptionStatus;
+import kz.kayak.bookkeeper.repository.SubscriptionRepository;
 import kz.kayak.bookkeeper.service.ChargeService;
 import kz.kayak.bookkeeper.service.PaymentService;
 import kz.kayak.bookkeeper.service.PersonService;
 import kz.kayak.bookkeeper.service.SubscriptionService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,6 +43,7 @@ class FinancialReportApiTest {
     @Autowired PaymentService paymentService;
     @Autowired PersonService personService;
     @Autowired SubscriptionService subscriptionService;
+    @Autowired SubscriptionRepository subscriptionRepository;
 
     @Test
     void returnsAllTimeSubscriptionReportWithoutDateParameters() throws Exception {
@@ -78,5 +84,83 @@ class FinancialReportApiTest {
                 .andExpect(jsonPath("$.subscriptions[0].payments[0].method").value("TRANSFER"))
                 .andExpect(jsonPath("$.subscriptions[0].payments[0].chargeId").value(charge.id()))
                 .andExpect(jsonPath("$.subscriptions[0].payments[0].allocated").value(5_000));
+    }
+
+    @ParameterizedTest
+    @EnumSource(SubscriptionStatus.class)
+    void filtersEveryStatusBeforeCalculatingSummaryAndPaymentDetails(SubscriptionStatus filter) throws Exception {
+        List<Subscription> subscriptions = statusFixtures();
+        int index = filter.ordinal() + 1;
+        long poolCost = filter == SubscriptionStatus.DRAFT ? 0 : index * 10;
+        mockMvc.perform(get("/api/reports/financial").param("status", filter.name())
+                        .header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subscriptions.length()").value(1))
+                .andExpect(jsonPath("$.subscriptions[0].subscriptionId").value(subscriptions.get(filter.ordinal()).getId()))
+                .andExpect(jsonPath("$.subscriptions[0].status").value(filter.name()))
+                .andExpect(jsonPath("$.subscriptions[0].payments.length()").value(1))
+                .andExpect(jsonPath("$.subscriptions[0].payments[0].allocated").value(index * 30))
+                .andExpect(jsonPath("$.summary.charged").value(index * 100))
+                .andExpect(jsonPath("$.summary.allocatedPayments").value(index * 30))
+                .andExpect(jsonPath("$.summary.outstanding").value(index * 70))
+                .andExpect(jsonPath("$.summary.poolRentalCost").value(poolCost))
+                .andExpect(jsonPath("$.summary.clubProfit").value(index * 30 - poolCost))
+                .andExpect(jsonPath("$.unassignedCharges[0].amount").value(50));
+    }
+
+    @Test
+    void statusIntersectsSelectedIdsAndEmptyIntersectionDoesNotFallBackToAll() throws Exception {
+        List<Subscription> subscriptions = statusFixtures();
+        mockMvc.perform(get("/api/reports/financial").param("status", "FINALIZED")
+                        .param("subscriptionId", subscriptions.get(0).getId().toString(), subscriptions.get(1).getId().toString())
+                        .header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subscriptions.length()").value(1))
+                .andExpect(jsonPath("$.subscriptions[0].subscriptionId").value(subscriptions.get(1).getId()))
+                .andExpect(jsonPath("$.summary.charged").value(200));
+        mockMvc.perform(get("/api/reports/financial").param("status", "COMPLETED")
+                        .param("subscriptionId", subscriptions.get(0).getId().toString(), subscriptions.get(1).getId().toString())
+                        .header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subscriptions").isEmpty())
+                .andExpect(jsonPath("$.summary.charged").value(0))
+                .andExpect(jsonPath("$.summary.allocatedPayments").value(0))
+                .andExpect(jsonPath("$.summary.outstanding").value(0))
+                .andExpect(jsonPath("$.summary.poolRentalCost").value(0))
+                .andExpect(jsonPath("$.summary.clubProfit").value(0))
+                .andExpect(jsonPath("$.unassignedCharges[0].amount").value(50));
+    }
+
+    @Test
+    void omittedStatusRetainsAllStatusesAndRejectsInvalidStatus() throws Exception {
+        statusFixtures();
+        mockMvc.perform(get("/api/reports/financial").header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subscriptions.length()").value(3))
+                .andExpect(jsonPath("$.summary.charged").value(600))
+                .andExpect(jsonPath("$.summary.allocatedPayments").value(180))
+                .andExpect(jsonPath("$.summary.outstanding").value(420))
+                .andExpect(jsonPath("$.summary.poolRentalCost").value(50))
+                .andExpect(jsonPath("$.summary.clubProfit").value(130));
+        mockMvc.perform(get("/api/reports/financial").param("status", "UNKNOWN")
+                        .header(HttpHeaders.AUTHORIZATION, ADMIN_AUTHORIZATION))
+                .andExpect(status().isBadRequest());
+    }
+
+    private List<Subscription> statusFixtures() {
+        var person = personService.createPerson(new PersonRequest("Статусы", null, null));
+        LocalDate date = LocalDate.of(2026, 11, 1);
+        chargeService.createManualCharge(new ManualChargeRequest(person.id(), 50, date, "Без абонемента", null));
+        return java.util.Arrays.stream(SubscriptionStatus.values()).map(state -> {
+            int index = state.ordinal() + 1;
+            var subscription = new Subscription(1, state.name(), null);
+            if (state != SubscriptionStatus.DRAFT) subscription.finalizeWith(index * 10);
+            if (state == SubscriptionStatus.COMPLETED) subscription.complete();
+            subscription = subscriptionRepository.save(subscription);
+            var charge = chargeService.createManualCharge(new ManualChargeRequest(person.id(), index * 100, date, "Начисление", subscription.getId()));
+            var payment = paymentService.createPayment(new PaymentRequest(person.id(), index * 30, date, PaymentMethod.CASH, null));
+            paymentService.allocatePayment(payment.id(), new AllocationRequest(charge.id(), index * 30));
+            return subscription;
+        }).toList();
     }
 }

@@ -1,28 +1,42 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useId, useState } from 'react';
 import { money } from '../../shared/format.js';
 import { statusLabels } from '../../shared/labels.js';
 import SubscriptionPaymentTable from './SubscriptionPaymentTable.jsx';
 
 export default function SubscriptionReportTable({ report }) {
     const [expandedSubscriptionIds, setExpandedSubscriptionIds] = useState([]);
+    const tableId = useId();
+    const allExpanded = report.subscriptions.every((subscription) => expandedSubscriptionIds.includes(subscription.subscriptionId));
+    const anyExpanded = report.subscriptions.some((subscription) => expandedSubscriptionIds.includes(subscription.subscriptionId));
     const toggleDetails = (id) =>
         setExpandedSubscriptionIds((ids) =>
             ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id],
         );
     return (
         <section className="card">
-            <h2>Абонементы</h2>
+            <div className="report-subscription-heading">
+                <h2>Абонементы</h2>
+                <div className="button-group report-subscription-controls" role="group" aria-label="Раскрытие абонементов">
+                    <button type="button" disabled={allExpanded}
+                        onClick={() => setExpandedSubscriptionIds(report.subscriptions.map((subscription) => subscription.subscriptionId))}>
+                        Развернуть все
+                    </button>
+                    <button type="button" disabled={!anyExpanded} onClick={() => setExpandedSubscriptionIds([])}>
+                        Свернуть все
+                    </button>
+                </div>
+            </div>
             <div className="balance-table-wrap">
                 <table className="balance-table report-table">
                     <thead>
                         <tr>
-                            <th>Абонемент</th>
-                            <th>Участников</th>
-                            <th>Начислено</th>
-                            <th>Оплачено</th>
-                            <th>Недостача</th>
-                            <th>Бассейн</th>
-                            <th>Прибыль</th>
+                            <th scope="col">Абонемент</th>
+                            <th scope="col">Участников</th>
+                            <th scope="col">Начислено</th>
+                            <th scope="col">Оплачено</th>
+                            <th scope="col">Недостача</th>
+                            <th scope="col">Бассейн</th>
+                            <th scope="col">Прибыль</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -31,32 +45,24 @@ export default function SubscriptionReportTable({ report }) {
                                 const expanded = expandedSubscriptionIds.includes(
                                     subscription.subscriptionId,
                                 );
-                                const detailsId = `subscription-payments-${subscription.subscriptionId}`;
+                                const detailsId = `${tableId}-subscription-payments-${subscription.subscriptionId}`;
+                                const title = subscription.title || `Абонемент #${subscription.subscriptionId}`;
                                 return (
                                     <Fragment key={subscription.subscriptionId}>
-                                        <tr
-                                            className="report-subscription-row"
-                                            tabIndex="0"
-                                            role="button"
-                                            aria-expanded={expanded}
-                                            aria-controls={detailsId}
-                                            onClick={() => toggleDetails(subscription.subscriptionId)}
-                                            onKeyDown={(event) => {
-                                                if (event.key === 'Enter' || event.key === ' ') {
-                                                    event.preventDefault();
-                                                    toggleDetails(subscription.subscriptionId);
-                                                }
-                                            }}
-                                        >
+                                        <tr className="report-subscription-row">
                                             <td>
-                                                <strong>
-                                                    {subscription.title ||
-                                                        `Абонемент #${subscription.subscriptionId}`}
-                                                </strong>
-                                                <small>
-                                                    {statusLabels[subscription.status]} ·{' '}
-                                                    {expanded ? 'Скрыть оплаты' : 'Показать оплаты'}
-                                                </small>
+                                                <div className="balance-person-heading">
+                                                    <button type="button" className="balance-expand"
+                                                        aria-label={`${expanded ? 'Свернуть' : 'Развернуть'} оплаты: ${title}`}
+                                                        aria-expanded={expanded} aria-controls={detailsId}
+                                                        onClick={() => toggleDetails(subscription.subscriptionId)}>
+                                                        <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                                                    </button>
+                                                    <div>
+                                                        <strong>{title}</strong>
+                                                        <small>{statusLabels[subscription.status]}</small>
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td>{subscription.memberCount}</td>
                                             <td>{money(subscription.charged)}</td>
@@ -77,17 +83,16 @@ export default function SubscriptionReportTable({ report }) {
                                                 {money(subscription.clubProfit)}
                                             </td>
                                         </tr>
-                                        {expanded && (
-                                            <tr id={detailsId} className="report-payment-details">
-                                                <td colSpan="7">
-                                                    <h3>Оплаты, распределённые на начисления абонемента</h3>
+                                        <tr id={detailsId} hidden={!expanded} className="report-payment-details">
+                                            <td colSpan="7">
+                                                {expanded && (
                                                     <SubscriptionPaymentTable
                                                         subscriptionId={subscription.subscriptionId}
                                                         payments={subscription.payments}
                                                     />
-                                                </td>
-                                            </tr>
-                                        )}
+                                                )}
+                                            </td>
+                                        </tr>
                                     </Fragment>
                                 );
                             })

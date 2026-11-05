@@ -182,7 +182,7 @@ test('existing payment allocation rejects overflow and closes only after success
     assert.equal(closed, 1);
 });
 
-test('report subscription rows expand and collapse payment details through keyboard', async () => {
+test('report subscription buttons expose native keyboard semantics and toggle payment details', async () => {
     const renderer = await render(
         h(SubscriptionReportTable, {
             report: {
@@ -206,13 +206,15 @@ test('report subscription rows expand and collapse payment details through keybo
             },
         }),
     );
-    const row = () => renderer.root.findAllByType('tr').find((item) => item.props.role === 'button');
-    assert.equal(row().props['aria-expanded'], false);
-    await act(async () => row().props.onKeyDown({ key: 'Enter', preventDefault() {} }));
-    assert.equal(row().props['aria-expanded'], true);
+    const button = () => renderer.root.findByProps({ className: 'report-subscription-row' }).findByType('button');
+    assert.equal(button().props.type, 'button');
+    assert.equal(button().props.onKeyDown, undefined);
+    assert.equal(button().props['aria-expanded'], false);
+    await act(async () => button().props.onClick());
+    assert.equal(button().props['aria-expanded'], true);
     assert.equal(renderer.root.findAllByType('table').length, 2);
-    await act(async () => row().props.onKeyDown({ key: ' ', preventDefault() {} }));
-    assert.equal(row().props['aria-expanded'], false);
+    await act(async () => button().props.onClick());
+    assert.equal(button().props['aria-expanded'], false);
 });
 
 test('selected balance keeps refreshing with the latest API after credentials change', async () => {

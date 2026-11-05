@@ -93,7 +93,11 @@ class PeopleApiTest {
                 .andExpect(jsonPath("$[0].charged").value(5_000))
                 .andExpect(jsonPath("$[0].paid").value(2_500))
                 .andExpect(jsonPath("$[0].unallocated").value(800))
-                .andExpect(jsonPath("$[0].balance").value(2_500));
+                .andExpect(jsonPath("$[0].balance").value(2_500))
+                .andExpect(jsonPath("$[0].subscriptionBalances[0].subscriptionId").isEmpty())
+                .andExpect(jsonPath("$[0].subscriptionBalances[0].charged").value(5_000))
+                .andExpect(jsonPath("$[0].subscriptionBalances[0].allocated").value(1_700))
+                .andExpect(jsonPath("$[0].subscriptionBalances[0].balance").value(3_300));
     }
 
     @Test

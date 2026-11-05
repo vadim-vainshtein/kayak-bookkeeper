@@ -5,12 +5,16 @@ import { downloadFinancialReport } from './reportCsv.js';
 import ReportSummary from './ReportSummary.jsx';
 import SubscriptionReportTable from './SubscriptionReportTable.jsx';
 
+const statusOptions = { '': 'Все', COMPLETED: 'Завершённые', FINALIZED: 'Рассчитанные', DRAFT: 'Черновик' };
+
 export default function Reports({ reportState, loading, loadReport, subscriptions }) {
     const report = reportState?.data || null;
     const appliedSubscriptionIds = reportState?.subscriptionIds || [];
+    const appliedStatus = reportState?.status || '';
     const [subscriptionIds, setSubscriptionIds] = useState(() => appliedSubscriptionIds);
+    const [subscriptionStatus, setSubscriptionStatus] = useState(() => appliedStatus);
     useEffect(() => {
-        loadReport(appliedSubscriptionIds);
+        loadReport(appliedSubscriptionIds, appliedStatus);
     }, []);
     const selectedSubscriptions = subscriptions.filter((subscription) =>
         subscriptionIds.includes(subscription.id),
@@ -22,17 +26,19 @@ export default function Reports({ reportState, loading, loadReport, subscription
           : `Выбрано: ${selectedSubscriptions.length}`;
     const toggleSubscription = (id) =>
         setSubscriptionIds((ids) => (ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id]));
+    const appliedSubscriptions = subscriptions.filter((subscription) => appliedSubscriptionIds.includes(subscription.id));
+    const appliedSubscriptionLabel = !appliedSubscriptionIds.length ? 'Все абонементы'
+        : appliedSubscriptionIds.length === 1 && appliedSubscriptions.length === 1 ? appliedSubscriptions[0].title || 'Без названия'
+        : `Выбрано: ${appliedSubscriptionIds.length}`;
     const exportCsv = () => {
-        const csvSubscriptionLabel = selectedSubscriptions.length === 1
-            ? selectedSubscriptions[0].title || 'Без названия'
-            : subscriptionLabel;
-        if (report) downloadFinancialReport(report, csvSubscriptionLabel);
+        if (report) downloadFinancialReport(report, appliedSubscriptionLabel, statusOptions[appliedStatus]);
     };
     const submitReport = async (event) => {
         event.preventDefault();
-        const nextReport = await loadReport(subscriptionIds);
-        if (!nextReport && reportState) {
-            setSubscriptionIds(reportState.subscriptionIds);
+        const nextReport = await loadReport(subscriptionIds, subscriptionStatus);
+        if (!nextReport) {
+            setSubscriptionIds(appliedSubscriptionIds);
+            setSubscriptionStatus(appliedStatus);
         }
     };
     return (
@@ -46,11 +52,11 @@ export default function Reports({ reportState, loading, loadReport, subscription
                             оставьте все.
                         </p>
                     </div>
-                    <button onClick={exportCsv} disabled={!report}>
+                    <button onClick={exportCsv} disabled={loading || !report}>
                         Скачать CSV
                     </button>
                 </div>
-                <form className="report-period" onSubmit={submitReport}>
+                <form className="report-period report-status-period" onSubmit={submitReport}>
                     <details className="report-subscription-picker">
                         <summary>
                             Абонементы: <strong>{subscriptionLabel}</strong>
@@ -76,10 +82,18 @@ export default function Reports({ reportState, loading, loadReport, subscription
                             ))}
                         </div>
                     </details>
+                    <label>
+                        Статус абонемента
+                        <select value={subscriptionStatus} disabled={loading}
+                            onChange={(event) => setSubscriptionStatus(event.target.value)}>
+                            {Object.entries(statusOptions).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </select>
+                    </label>
                     <button className="primary" disabled={loading}>
                         Показать
                     </button>
                 </form>
+                {report && <p className="muted report-applied-filters">Показано: {appliedSubscriptionLabel} · Статус: {statusOptions[appliedStatus]}</p>}
             </section>
             {loading && (
                 <p className="muted" role="status">

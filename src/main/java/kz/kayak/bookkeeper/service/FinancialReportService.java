@@ -19,6 +19,7 @@ import kz.kayak.bookkeeper.domain.Payment;
 import kz.kayak.bookkeeper.domain.PaymentAllocation;
 import kz.kayak.bookkeeper.domain.Subscription;
 import kz.kayak.bookkeeper.domain.SubscriptionMember;
+import kz.kayak.bookkeeper.domain.SubscriptionStatus;
 import kz.kayak.bookkeeper.repository.ChargeRepository;
 import kz.kayak.bookkeeper.repository.PaymentAllocationRepository;
 import kz.kayak.bookkeeper.repository.SubscriptionMemberRepository;
@@ -48,7 +49,14 @@ public class FinancialReportService {
 
     @Transactional
     public FinancialReportView financialReport(List<Long> subscriptionIds) {
-        List<Subscription> reportSubscriptions = selectedSubscriptions(subscriptionIds);
+        return financialReport(subscriptionIds, null);
+    }
+
+    @Transactional
+    public FinancialReportView financialReport(List<Long> subscriptionIds, SubscriptionStatus status) {
+        List<Subscription> reportSubscriptions = selectedSubscriptions(subscriptionIds).stream()
+                .filter(subscription -> status == null || subscription.getStatus() == status)
+                .toList();
         Set<Long> selectedIds = reportSubscriptions.stream().map(Subscription::getId).collect(Collectors.toSet());
         List<Charge> allCharges = charges.findAll();
         List<PaymentAllocation> allAllocations = allocations.findAll();
