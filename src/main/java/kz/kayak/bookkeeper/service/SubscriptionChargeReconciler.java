@@ -59,6 +59,11 @@ public class SubscriptionChargeReconciler {
     }
 
     void applyFinalizedUpdate(Subscription subscription, FinalizedSubscriptionUpdateRequest request, SubscriptionFeePlan plan) {
+        List<TrainingSession> previousSessions = sessions.findBySubscriptionInWithSubscription(List.of(subscription));
+        for (TrainingSession session : previousSessions) {
+            if (session.getAttendanceRevision() > 0 && !request.startsAt().contains(session.getStartsAt()))
+                throw new DomainException("Нельзя удалить или перенести тренировку с сохранёнными посещениями. Сохраните её дату в расписании.");
+        }
         Map<MemberChargeKey, Long> actualFees = new HashMap<>();
         Set<MemberChargeKey> consumed = new HashSet<>();
         for (Charge charge : charges.findBySubscription(subscription).stream().filter(this::automaticSubscriptionCharge).toList()) {
@@ -83,13 +88,17 @@ public class SubscriptionChargeReconciler {
             charges.save(new Charge(get(people, key.personId(), "Person"), subscription, key.type(), entry.getValue(), plan.chargedAt(), automaticChargeDescription(key.type())));
             actualFees.put(key, entry.getValue());
         }
-        sessions.deleteBySubscription(subscription);
+        Map<java.time.LocalDateTime, TrainingSession> retainedSessions = new HashMap<>();
+        for (TrainingSession session : previousSessions) {
+            if (request.startsAt().contains(session.getStartsAt())) retainedSessions.put(session.getStartsAt(), session);
+            else sessions.delete(session);
+        }
         members.deleteBySubscription(subscription);
         subscription.updateMetadata(request.title(), request.description());
         subscription.updateCapacity(request.capacity());
         subscription.updatePoolRentalAmount(plan.poolRentalAmount());
         request.startsAt().stream().sorted().forEach(startsAt -> {
-            TrainingSession session = new TrainingSession(subscription, startsAt);
+            TrainingSession session = retainedSessions.getOrDefault(startsAt, new TrainingSession(subscription, startsAt));
             session.snapshotPoolRental(plan.sessionRentals().get(startsAt));
             sessions.save(session);
         });

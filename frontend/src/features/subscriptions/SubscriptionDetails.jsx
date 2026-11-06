@@ -8,6 +8,7 @@ export default function SubscriptionDetails({
     finalize,
     complete,
     submitting,
+    openAttendance,
 }) {
     return (
         <section className="card">
@@ -25,6 +26,15 @@ export default function SubscriptionDetails({
                 {selected.sessions.map((session) => (
                     <li key={session.id} className="session-row">
                         <span>{formatDate(session.startsAt)}</span>
+                        <span className="attendance-session-actions">
+                            {selected.status !== 'DRAFT' && <small className="muted">
+                                Пришли: {session.attendedCount || 0}{!session.attendanceRecorded && ' · ещё не отмечали'}
+                            </small>}
+                            {session.attendanceAvailable && <button type="button" disabled={submitting}
+                                onClick={() => openAttendance(session)}>
+                                {readOnly ? 'Посещения' : 'Отметить посещения'}
+                            </button>}
+                        </span>
                     </li>
                 ))}
             </ul>

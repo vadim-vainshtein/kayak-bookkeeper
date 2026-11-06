@@ -9,9 +9,12 @@ public class TrainingSession {
     @ManyToOne(optional = false) private Subscription subscription;
     @Column(nullable = false) private LocalDateTime startsAt;
     private Long poolRentalAmount;
+    @Column(nullable = false) private long attendanceRevision;
     protected TrainingSession() { }
     public TrainingSession(Subscription subscription, LocalDateTime startsAt) { this.subscription=subscription; this.startsAt=startsAt; }
     public Long getPoolRentalAmount() { return poolRentalAmount; }
+    public long getAttendanceRevision() { return attendanceRevision; }
+    public void recordAttendance() { attendanceRevision++; }
     public void snapshotPoolRental(long amount) { this.poolRentalAmount = amount; }
     public Long getId() { return id; } public Subscription getSubscription() { return subscription; } public LocalDateTime getStartsAt() { return startsAt; }
 }

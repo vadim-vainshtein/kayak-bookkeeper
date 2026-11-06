@@ -36,6 +36,9 @@ textarea { resize: vertical; }
 .status { display: inline-block; border-radius: 99px; padding: 2px 7px; background: #e4f3eb; color: #145a42; font-size: 12px; white-space: nowrap; }
 .plain-list { margin: 0 0 16px; padding-left: 20px; }
 .session-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; }
+.attendance-session-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px; text-align: right; }
+.attendance-guests label { margin-top: 8px; }
+.attendance-guests input { max-width: 220px; }
 .member-picker { padding: 10px; border: 1px solid #cfd8d3; border-radius: 8px; }
 .member-picker legend { padding: 0 4px; font-size: 13px; color: #52605b; }
 .schedule-editor { padding: 10px; border: 1px solid #cfd8d3; border-radius: 8px; }
@@ -73,6 +76,15 @@ textarea { resize: vertical; }
 .balance-summary div { display: grid; gap: 4px; }
 .balance-summary strong { font-size: 21px; }
 .reports { display: grid; gap: 16px; }
+.report-type-switch { margin-bottom: 16px; }
+.attendance-report-subscription h2 { margin-bottom: 0; }
+.attendance-report-table { white-space: nowrap; }
+.attendance-report-table th:first-child { position: sticky; left: 0; background: #fff; z-index: 1; }
+.attendance-report-table th[scope="row"] { text-align: left; font-weight: 400; }
+.attendance-report-table th small { display: block; margin-top: 4px; font-weight: 400; }
+.attendance-report-table tfoot th, .attendance-report-table tfoot td { font-weight: 700; }
+.attendance-report-present { color: #145a42; background: #f0f8f3; font-weight: 600; }
+.attendance-report-help { margin: 0; line-height: 1.6; }
 .report-period { display: grid; grid-template-columns: minmax(0, 360px) auto; align-items: end; gap: 10px; max-width: 520px; }
 .report-period button { white-space: nowrap; }
 .report-status-period { grid-template-columns: minmax(0, 360px) minmax(160px, 200px) auto; max-width: 720px; }

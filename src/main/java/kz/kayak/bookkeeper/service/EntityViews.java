@@ -3,11 +3,9 @@ package kz.kayak.bookkeeper.service;
 import kz.kayak.bookkeeper.api.dto.MemberView;
 import kz.kayak.bookkeeper.api.dto.PersonView;
 import kz.kayak.bookkeeper.api.dto.RateView;
-import kz.kayak.bookkeeper.api.dto.SessionView;
 import kz.kayak.bookkeeper.domain.Person;
 import kz.kayak.bookkeeper.domain.PricingRate;
 import kz.kayak.bookkeeper.domain.SubscriptionMember;
-import kz.kayak.bookkeeper.domain.TrainingSession;
 
 final class EntityViews {
     private EntityViews() {}
@@ -22,10 +20,6 @@ final class EntityViews {
 
     static MemberView memberView(SubscriptionMember m) {
         return new MemberView(m.getId(), m.getPerson().getId(), m.getPerson().getFullName(), m.isUsesSkirt(), m.isUsesPaddle(), m.isUsesKayak(), m.getPoolShare(), m.getSkirtFee(), m.getPaddleFee(), m.getKayakFee());
-    }
-
-    static SessionView sessionView(TrainingSession s) {
-        return new SessionView(s.getId(), s.getStartsAt());
     }
 
 }

@@ -3,6 +3,7 @@ export const rateLabels = {
     SKIRT_RENTAL: 'Аренда юбки',
     PADDLE_RENTAL: 'Аренда весла',
     KAYAK_RENTAL: 'Аренда каяка',
+    DROP_IN: 'Разовая тренировка',
 };
 export const statusLabels = { DRAFT: 'Черновик', FINALIZED: 'Рассчитан', COMPLETED: 'Завершён' };
 export const methodLabels = { CASH: 'Наличные', TRANSFER: 'Перевод', OTHER: 'Другое' };

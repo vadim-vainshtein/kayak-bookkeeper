@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export default function useClubData(api, authorization, setError) {
     const [people, setPeople] = useState([]);
@@ -6,9 +6,11 @@ export default function useClubData(api, authorization, setError) {
     const [subscriptions, setSubscriptions] = useState([]);
     const [rates, setRates] = useState([]);
     const [loading, setLoading] = useState(false);
+    const loadRevision = useRef(0);
     const refreshBalances = async () => setPersonBalances(await api('/api/people/balances'));
-    const load = useCallback(async () => {
-        setLoading(true);
+    const load = useCallback(async ({ quiet = false } = {}) => {
+        const revision = ++loadRevision.current;
+        if (!quiet) setLoading(true);
         try {
             const [nextPeople, nextBalances, nextSubscriptions, nextRates] = await Promise.all([
                 api('/api/people'),
@@ -16,14 +18,15 @@ export default function useClubData(api, authorization, setError) {
                 api('/api/subscriptions'),
                 api('/api/pricing-rates'),
             ]);
+            if (revision !== loadRevision.current) return;
             setPeople(nextPeople);
             setPersonBalances(nextBalances);
             setSubscriptions(nextSubscriptions);
             setRates(nextRates);
         } catch (error) {
-            setError(error.message);
+            if (revision === loadRevision.current) setError(error.message);
         } finally {
-            setLoading(false);
+            if (revision === loadRevision.current) setLoading(false);
         }
     }, [api, setError]);
     useEffect(() => {

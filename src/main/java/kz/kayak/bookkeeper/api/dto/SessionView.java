@@ -4,6 +4,9 @@ import java.time.LocalDateTime;
 
 public record SessionView(
         Long id,
-        LocalDateTime startsAt
+        LocalDateTime startsAt,
+        long attendedCount,
+        boolean attendanceRecorded,
+        boolean attendanceAvailable
 ) {
 }

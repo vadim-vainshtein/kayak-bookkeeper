@@ -5,7 +5,7 @@ import People from './features/people/People.jsx';
 import Subscriptions from './features/subscriptions/Subscriptions.jsx';
 import Rates from './features/rates/Rates.jsx';
 import Ledger from './features/ledger/Ledger.jsx';
-import Reports from './features/reports/Reports.jsx';
+import ReportsPage from './features/reports/ReportsPage.jsx';
 import PasswordSettings from './features/account/PasswordSettings.jsx';
 import Users from './features/account/Users.jsx';
 import useAuth from './hooks/useAuth.js';
@@ -13,6 +13,7 @@ import useClubData from './hooks/useClubData.js';
 import useMutation from './hooks/useMutation.js';
 import usePersonBalance from './hooks/usePersonBalance.js';
 import useFinancialReport from './hooks/useFinancialReport.js';
+import useAttendanceReport from './hooks/useAttendanceReport.js';
 import useInlineValidation from './hooks/useInlineValidation.js';
 import { createPeopleActions } from './features/people/peopleActions.js';
 import { createRateActions } from './features/rates/rateActions.js';
@@ -30,6 +31,7 @@ function ClubApp({ auth }) {
     const { authorization, user, account, api, setAuthorization } = auth;
     const readOnly = account.role !== 'ADMIN';
     const [tab, setTab] = useState('overview');
+    const [reportType, setReportType] = useState('financial');
     const { submitting, error, message, setError, run, submit } = useMutation();
     const { people, personBalances, subscriptions, rates, loading, load, refreshBalances } = useClubData(
         api,
@@ -38,6 +40,7 @@ function ClubApp({ auth }) {
     );
     const { personId, balance, loadBalance, selectPerson, showPeople } = usePersonBalance(api, setError);
     const { financialReport, reportLoading, loadFinancialReport } = useFinancialReport(api, setError);
+    const { attendanceReport, attendanceLoading, attendanceError, loadAttendanceReport } = useAttendanceReport(api);
     useInlineValidation();
     const { addPerson, updatePerson } = createPeopleActions({ api, submit, load });
     const { createRate, endRate } = createRateActions({ api, submit, load });
@@ -60,6 +63,8 @@ function ClubApp({ auth }) {
                 readOnly={readOnly}
                 people={people}
                 subscriptions={subscriptions}
+                api={api}
+                refreshData={load}
                 create={createSubscription}
                 update={updateSubscription}
                 preview={previewSubscriptionUpdate}
@@ -89,10 +94,11 @@ function ClubApp({ auth }) {
             />
         ),
         reports: (
-            <Reports
-                reportState={financialReport}
-                loading={reportLoading}
-                loadReport={loadFinancialReport}
+            <ReportsPage
+                reportType={reportType}
+                setReportType={setReportType}
+                financial={{ reportState: financialReport, loading: reportLoading, loadReport: loadFinancialReport }}
+                attendance={{ reportState: attendanceReport, loading: attendanceLoading, error: attendanceError, loadReport: loadAttendanceReport }}
                 subscriptions={subscriptions}
             />
         ),

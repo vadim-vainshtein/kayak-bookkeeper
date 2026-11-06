@@ -33,6 +33,21 @@
       "key": "allocationId",
       "value": "",
       "description": "Идентификатор распределения из allocations нужного платежа в ответе Баланс"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "description": "Идентификатор уже начавшейся тренировки рассчитанного или завершённого абонемента"
+    },
+    {
+      "key": "guestPersonId",
+      "value": "",
+      "description": "Идентификатор гостя, который не входит в абонемент"
+    },
+    {
+      "key": "attendanceRevision",
+      "value": "0",
+      "description": "Актуальная revision из GET посещений; обновляется после успешного сохранения"
     }
   ],
   "item": [
@@ -52,6 +67,60 @@
             "method": "GET",
             "url": "{{baseUrl}}/swagger-ui/index.html"
           }
+        }
+      ]
+    },
+    {
+      "name": "Посещения тренировок",
+      "item": [
+        {
+          "name": "Создать тариф разовой тренировки",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/pricing-rates",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"code\":\"DROP_IN\",\"amount\":2500,\"effectiveFrom\":\"2026-11-07\",\"effectiveTo\":null}"},
+            "description": "Задайте период и цену разового визита. Новым гостям применяется тариф на сегодняшний день в часовом поясе клуба. Сохранённые цены посещений не пересчитываются."
+          }
+        },
+        {
+          "name": "Получить посещения тренировки",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/sessions/{{sessionId}}/attendance",
+            "description": "Доступно ADMIN и READ_ONLY. Возвращает участников (по умолчанию present=false), сохранённых гостей, revision, available и текущий тариф dropInAmount на rateDate. null тариф требует ручной суммы."
+          },
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "pm.test('Посещения загружены', () => pm.response.to.have.status(200));",
+            "if (pm.response.code === 200) pm.collectionVariables.set('attendanceRevision', pm.response.json().revision);"
+          ]}}]
+        },
+        {
+          "name": "Сохранить участников и гостя",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/sessions/{{sessionId}}/attendance",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"revision\":{{attendanceRevision}},\"memberIds\":[{{personId}}],\"guests\":[{\"personId\":{{guestPersonId}},\"amount\":2500}]}"},
+            "description": "ADMIN. Заменяет ВЕСЬ список пришедших и создаёт/обновляет начисление гостя одной транзакцией. Сначала загрузите GET и заполните personId участника, guestPersonId гостя. memberIds — идентификаторы людей. amount можно изменить; null использует текущий тариф, 0 означает бесплатный визит. Вместимость не ограничивает число пришедших. Устаревшая revision, будущая тренировка, черновик или уменьшение суммы ниже распределённой оплаты дают 409 без изменений. Удаление неоплаченного гостя из списка удаляет его начисление."
+          },
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "pm.test('Посещения сохранены', () => pm.response.to.have.status(200));",
+            "if (pm.response.code === 200) pm.collectionVariables.set('attendanceRevision', pm.response.json().revision);"
+          ]}}]
+        },
+        {
+          "name": "Сохранить посещение нового человека",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/sessions/{{sessionId}}/attendance",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\"revision\":{{attendanceRevision}},\"memberIds\":[],\"guests\":[{\"fullName\":\"Новый каякер\",\"phone\":\"+77001234567\",\"amount\":2000}]}"},
+            "description": "ADMIN. Пример полного списка только с одним новым гостем. Перед выполнением включите в тело остальных пришедших, которых требуется сохранить. Новый человек и начисление создаются атомарно; ошибка откатывает всё. При повторном редактировании используйте возвращённый personId вместо fullName, чтобы не создавать другого человека."
+          },
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "if (pm.response.code === 200) pm.collectionVariables.set('attendanceRevision', pm.response.json().revision);"
+          ]}}]
         }
       ]
     },
@@ -284,6 +353,42 @@
           "request": {
             "method": "POST",
             "url": "{{baseUrl}}/api/subscriptions/{{subscriptionId}}/complete"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Отчёты по посещениям",
+      "item": [
+        {
+          "name": "Посещения всех рассчитанных и завершённых абонементов",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/reports/attendance",
+            "description": "ADMIN и READ_ONLY. Снимок generatedAt/timeZone, общая summary и subscriptions с отдельными summary, sessions и people. Черновики исключены. В summary: scheduledSessions, startedSessions, recordedSessions, memberVisits, guestVisits, totalVisits и uniqueVisitors (уникальные люди во всей выборке). sessions содержит started/recorded и счётчики; people — текущий состав и исторических посетителей, их totals и разреженные visits:[{sessionId,guest}]. Будущие отметки не учитываются. Нет процентов/пропусков: история состава не фиксируется."
+          },
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "pm.test('Отчёт получен', () => pm.response.to.have.status(200));",
+            "if (pm.response.code === 200) { const report = pm.response.json(); pm.test('Итоги и будущие тренировки согласованы', () => { pm.expect(report.timeZone).to.be.a('string'); pm.expect(report.summary.totalVisits).to.eql(report.summary.memberVisits + report.summary.guestVisits); pm.expect(report.summary.uniqueVisitors).to.be.at.most(report.summary.totalVisits); for (const sub of report.subscriptions) { pm.expect(sub.status).not.to.eql('DRAFT'); for (const session of sub.sessions.filter(s => !s.started)) { pm.expect(session.totalVisits).to.eql(0); pm.expect(session.recorded).to.eql(false); } } }); }"
+          ]}}]
+        },
+        {
+          "name": "Посещения выбранного рассчитанного абонемента",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/reports/attendance?subscriptionId={{subscriptionId}}&status=FINALIZED",
+            "description": "Выбор subscriptionId пересекается со status. Для нескольких абонементов повторите subscriptionId в query. Пустое пересечение даёт пустую subscriptions и нулевую summary; неизвестный ID — 404. Список абонементов не ограничивает вместимость посетителей."
+          },
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "pm.test('Фильтр применён', () => { pm.response.to.have.status(200); for (const sub of pm.response.json().subscriptions) { pm.expect(sub.status).to.eql('FINALIZED'); pm.expect(String(sub.subscriptionId)).to.eql(pm.collectionVariables.get('subscriptionId')); } });"
+          ]}}]
+        },
+        {
+          "name": "Посещения завершённых абонементов",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/reports/attendance?status=COMPLETED",
+            "description": "Только завершённые абонементы. Допустимые status: FINALIZED и COMPLETED; DRAFT/неизвестный статус дают 400."
           }
         }
       ]

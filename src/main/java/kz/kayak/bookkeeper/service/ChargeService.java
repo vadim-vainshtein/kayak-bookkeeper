@@ -13,6 +13,7 @@ import kz.kayak.bookkeeper.repository.ChargeRepository;
 import kz.kayak.bookkeeper.repository.PersonRepository;
 import kz.kayak.bookkeeper.repository.SubscriptionMemberRepository;
 import kz.kayak.bookkeeper.repository.SubscriptionRepository;
+import kz.kayak.bookkeeper.repository.SessionAttendanceRepository;
 import org.springframework.stereotype.Service;
 
 import static kz.kayak.bookkeeper.service.EntityLookup.get;
@@ -25,18 +26,20 @@ public class ChargeService {
     private final ChargeRepository charges;
     private final SubscriptionMemberRepository members;
     private final LedgerViewMapper views;
+    private final SessionAttendanceRepository attendance;
 
     public ChargeService(
             PersonRepository people,
             SubscriptionRepository subscriptions,
             ChargeRepository charges,
             SubscriptionMemberRepository members,
-            LedgerViewMapper views) {
+            LedgerViewMapper views, SessionAttendanceRepository attendance) {
         this.people = people;
         this.subscriptions = subscriptions;
         this.charges = charges;
         this.members = members;
         this.views = views;
+        this.attendance = attendance;
     }
 
     @Transactional
@@ -49,6 +52,7 @@ public class ChargeService {
     @Transactional
     public ChargeView editCharge(long id, ChargeEditRequest r) {
         Charge c = lockedCharge(id);
+        ensureNotAttendanceCharge(c);
         if (charges.allocatedFor(c) > r.amount())
             throw new DomainException("Charge amount cannot be below allocated payment amount");
         Subscription s = c.getSubscription();
@@ -61,6 +65,7 @@ public class ChargeService {
     @Transactional
     public void deleteCharge(long id) {
         Charge c = lockedCharge(id);
+        ensureNotAttendanceCharge(c);
         if (charges.allocatedFor(c) > 0)
             throw new DomainException("Нельзя удалить начисление с распределённой оплатой. Сначала отмените распределение в окне редактирования оплаты.");
         syncAutomaticFee(c, 0);
@@ -69,6 +74,11 @@ public class ChargeService {
 
     private Charge lockedCharge(long id) {
         return charges.findWithLockById(id).orElseThrow(() -> new NoSuchElementException("Charge " + id + " was not found"));
+    }
+
+    private void ensureNotAttendanceCharge(Charge charge) {
+        if (attendance.existsByChargeId(charge.getId()))
+            throw new DomainException("Это начисление за гостя тренировки. Измените сумму или уберите гостя в окне посещений абонемента.");
     }
 
     private void syncAutomaticFee(Charge c, long amount) {
