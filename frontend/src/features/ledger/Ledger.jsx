@@ -51,6 +51,7 @@ export default function Ledger({
                 ) : (
                     <div className="ledger">
                         <LedgerDetails
+                            key={personId}
                             readOnly={readOnly}
                             balance={balance}
                             subscriptions={subscriptions}

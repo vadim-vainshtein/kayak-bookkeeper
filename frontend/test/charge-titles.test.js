@@ -42,6 +42,7 @@ test('ledger headings and allocation history show compact names with subscriptio
             { id: 2, chargeId: 99, chargeDescription: 'Другое начисление', amount: 100 },
         ] }],
     }));
+    await act(async () => renderer.root.findByProps({ type: 'checkbox' }).props.onChange({ target: { checked: true } }));
     assert.deepEqual(renderer.root.findAllByProps({ className: 'ledger-item' })
         .map((item) => item.findByType('strong').children.join('')), expected);
     const allocations = renderer.root.findAllByProps({ className: 'allocation' });

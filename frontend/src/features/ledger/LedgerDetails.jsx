@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { balanceClass, balanceLabel, signedBalance, formatDate, money } from '../../shared/format.js';
 import { chargeLabels, methodLabels } from '../../shared/labels.js';
 import { paymentRemaining } from './allocation.js';
@@ -15,6 +16,9 @@ export default function LedgerDetails({
     openPaymentEdit,
     setAllocationPayment,
 }) {
+    const [showSettled, setShowSettled] = useState(false);
+    const visibleCharges = showSettled ? charges : charges.filter((charge) => charge.amount > charge.allocated);
+    const visiblePayments = showSettled ? payments : payments.filter((payment) => paymentRemaining(payment) > 0);
     const ChargeItem = readOnly ? 'div' : 'button';
     const PaymentItem = readOnly ? 'div' : 'button';
     return (
@@ -50,13 +54,21 @@ export default function LedgerDetails({
                         </button>
                     </div>}
                 </div>
+                <label className="checkbox">
+                    <input
+                        type="checkbox"
+                        checked={showSettled}
+                        onChange={(event) => setShowSettled(event.target.checked)}
+                    />
+                    Показывать все начисления и оплаты
+                </label>
             </section>
             <div className="grid">
                 <section className="card">
                     <h2>Начисления</h2>
-                    {charges.length ? (
+                    {visibleCharges.length ? (
                         <ul className="list">
-                            {charges.map((charge) => {
+                            {visibleCharges.map((charge) => {
                                 const remaining = Math.max(0, charge.amount - charge.allocated);
                                 return (
                                     <li key={charge.id}>
@@ -84,14 +96,14 @@ export default function LedgerDetails({
                             })}
                         </ul>
                     ) : (
-                        <p className="muted">Начислений пока нет.</p>
+                        <p className="muted">{charges.length ? 'Неоплаченных начислений нет.' : 'Начислений пока нет.'}</p>
                     )}
                 </section>
                 <section className="card">
                     <h2>Оплаты</h2>
-                    {payments.length ? (
+                    {visiblePayments.length ? (
                         <ul className="list">
-                            {payments.map((payment) => (
+                            {visiblePayments.map((payment) => (
                                 <li key={payment.id}>
                                     <PaymentItem
                                         className="ledger-item payment-item"
@@ -132,7 +144,7 @@ export default function LedgerDetails({
                             ))}
                         </ul>
                     ) : (
-                        <p className="muted">Оплат пока нет.</p>
+                        <p className="muted">{payments.length ? 'Нераспределённых оплат нет.' : 'Оплат пока нет.'}</p>
                     )}
                 </section>
             </div>
