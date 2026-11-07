@@ -45,7 +45,12 @@ export default function Modal({ open, onClose, title, children, closeDisabled = 
                 if (closeDisabled) event.preventDefault();
             }}
             onClick={(event) => {
-                if (event.target === event.currentTarget) close();
+                if (event.target !== event.currentTarget || closeDisabled) return;
+                // Native backdrop clicks target the dialog too. Padding and the
+                // unused area of a full-screen dialog are still inside the form.
+                const bounds = event.currentTarget.getBoundingClientRect();
+                if (event.clientX < bounds.left || event.clientX > bounds.right
+                    || event.clientY < bounds.top || event.clientY > bounds.bottom) close();
             }}
         >
             <div className="modal-header">

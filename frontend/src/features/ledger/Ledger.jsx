@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import Modal from '../../components/Modal.jsx';
 import AddChargeDialog from './AddChargeDialog.jsx';
 import AddPaymentDialog from './AddPaymentDialog.jsx';
@@ -8,15 +8,32 @@ import AllocationForm from './AllocationForm.jsx';
 import LedgerDetails from './LedgerDetails.jsx';
 import PersonBalanceTable from './PersonBalanceTable.jsx';
 import { paymentRemaining } from './allocation.js';
+import DetailPage from '../../components/DetailPage.jsx';
 
-export default function Ledger({
+export default function Ledger(props) {
+    const { personId, personBalances, subscriptions, selectPerson } = props;
+    const tablePanel = useRef(null);
+    const previousPerson = useRef(null);
+    useLayoutEffect(() => {
+        if (!personId && previousPerson.current) {
+            const buttons = tablePanel.current?.querySelectorAll(`[data-balance-person="${previousPerson.current}"]`);
+            Array.from(buttons || []).find((button) => button.getClientRects().length)?.focus();
+        }
+        previousPerson.current = personId;
+    }, [personId]);
+    return <>
+        <div ref={tablePanel} hidden={Boolean(personId)}><PersonBalanceTable personBalances={personBalances} subscriptions={subscriptions} selectPerson={selectPerson} /></div>
+        {personId && <PersonLedger key={personId} {...props} />}
+    </>;
+}
+
+function PersonLedger({
     readOnly = false,
     personBalances,
     subscriptions,
     personId,
     balance,
     submitting,
-    selectPerson,
     showPeople,
     addCharge,
     saveCharge,
@@ -38,10 +55,10 @@ export default function Ledger({
     const outstanding = charges.filter((charge) => charge.amount > charge.allocated);
     return (
         <>
-            <PersonBalanceTable personBalances={personBalances} subscriptions={subscriptions} selectPerson={selectPerson} />
-            <Modal
-                open={Boolean(personId)}
-                onClose={showPeople}
+            <DetailPage
+                onBack={showPeople}
+                backLabel="Все каякеры и балансы"
+                busy={submitting}
                 title={person ? `Начисления и оплаты · ${person.fullName}` : 'Начисления и оплаты'}
             >
                 {!balance ? (
@@ -122,7 +139,7 @@ export default function Ledger({
                         )}</>}
                     </div>
                 )}
-            </Modal>
+            </DetailPage>
         </>
     );
 }

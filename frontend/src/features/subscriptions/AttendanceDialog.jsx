@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import Modal from '../../components/Modal.jsx';
+import DetailPage from '../../components/DetailPage.jsx';
+import { useNavigationLock } from '../../components/NavigationLock.jsx';
 import { formatDate, money } from '../../shared/format.js';
 
-export default function AttendanceDialog({ session, people, api, readOnly = false, onSaved, onClose }) {
+function AttendanceSurface({ page, onClose, saving, title, children }) {
+    return page ? <DetailPage className="attendance-page" title={title} backLabel="К абонементу" onBack={onClose} busy={saving}>{children}</DetailPage>
+        : <Modal open title={title} onClose={onClose} closeDisabled={saving}>{children}</Modal>;
+}
+
+export default function AttendanceDialog({ session, people, api, readOnly = false, onSaved, onClose, page = false }) {
     const [roster, setRoster] = useState(null);
     const [members, setMembers] = useState({});
     const [guests, setGuests] = useState([]);
@@ -13,6 +20,7 @@ export default function AttendanceDialog({ session, people, api, readOnly = fals
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    useNavigationLock(page && saving);
     const pending = useRef(false);
     const nextKey = useRef(0);
 
@@ -93,12 +101,12 @@ export default function AttendanceDialog({ session, people, api, readOnly = fals
     }
 
     return (
-        <Modal open title={readOnly ? 'Посещения тренировки' : 'Отметить посещения'} onClose={onClose} closeDisabled={saving}>
-            <p>{formatDate(session.startsAt)}</p>
+        <AttendanceSurface page={page} title={readOnly ? 'Посещения тренировки' : 'Отметить посещения'} onClose={onClose} saving={saving}>
+            <p className="attendance-date">{formatDate(session.startsAt)}</p>
             {error && <p className="validation-message" role="alert">{error}</p>}
             {loading && <p role="status">Загрузка посещений…</p>}
             {!loading && !roster && <p className="muted">Закройте окно и откройте его снова для повторной загрузки.</p>}
-            {roster && <form onSubmit={save}>
+            {roster && <form className="attendance-form" onSubmit={save}>
                 <p className="muted">По умолчанию никто не пришёл. Отметьте только присутствующих. Начисления по абонементу от этих отметок не меняются.</p>
                 {!roster.available && <p role="status">Отметки доступны с начала тренировки рассчитанного абонемента.</p>}
                 <fieldset className="member-picker" disabled={disabled}>
@@ -153,11 +161,11 @@ export default function AttendanceDialog({ session, people, api, readOnly = fals
                         <button type="button" disabled={disabled || !newName.trim()} onClick={addNew}>Добавить нового гостя</button>
                     </details>
                 </fieldset>}
-                <p role="status">Всего пришли: <strong>{presentCount}</strong>. Количество гостей не ограничено вместимостью группы.</p>
+                <p role="status" className="attendance-total">Всего пришли: <strong>{presentCount}</strong>. Количество гостей не ограничено вместимостью группы.</p>
                 {!readOnly && <div className="dialog-actions"><button type="button" onClick={onClose} disabled={saving}>Отмена</button>
                     <button className="primary" disabled={disabled}>{saving ? 'Сохранение…' : 'Сохранить посещения'}</button>
                 </div>}
             </form>}
-        </Modal>
+        </AttendanceSurface>
     );
 }

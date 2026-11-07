@@ -49,7 +49,7 @@ export default function PersonBalanceTable({ personBalances, subscriptions = [],
                 «Оплачено»: в общем итоге — все полученные оплаты, по абонементам и начислениям без абонемента — только зачтённые средства.
                 {filtered && ' Показаны итоги по выбранным абонементам; нераспределённые оплаты в них не входят.'}
             </p>
-            <div className="balance-table-wrap">
+            <div className="balance-table-wrap desktop-balances">
                 <table className="balance-table" aria-describedby={`${tableId}-help`}>
                     <thead>
                         <tr>
@@ -78,7 +78,7 @@ export default function PersonBalanceTable({ personBalances, subscriptions = [],
                                                     onClick={() => toggleExpanded(entry.personId)}>
                                                     <span aria-hidden="true">{open && canExpand ? '▾' : '▸'}</span>
                                                 </button>
-                                                <button type="button" className="person-balance-button" onClick={() => selectPerson(entry.personId)}>
+                                                <button type="button" data-balance-person={entry.personId} className="person-balance-button" onClick={() => selectPerson(entry.personId)}>
                                                     {entry.fullName}
                                                     <small>{entry.active ? 'активен' : 'неактивен'}</small>
                                                     {filtered && <small>По выбранным абонементам</small>}
@@ -115,6 +115,45 @@ export default function PersonBalanceTable({ personBalances, subscriptions = [],
                     })}
                     {!rows.length && <tbody><tr><td colSpan={5} className="muted">{filtered ? 'Нет начислений по выбранным абонементам.' : 'Каякеров пока нет.'}</td></tr></tbody>}
                 </table>
+            </div>
+            <div className="mobile-balances" aria-describedby={`${tableId}-help`}>
+                {rows.map((entry) => {
+                    const groups = entry.subscriptionBalances || [];
+                    const open = expanded.includes(entry.personId);
+                    const hasFree = !filtered && entry.unallocated > 0;
+                    const canExpand = groups.length > 0 || hasFree;
+                    const detailId = `${tableId}-mobile-person-${entry.personId}`;
+                    return <article className="mobile-balance-card" key={entry.personId}>
+                        <div className="mobile-balance-heading">
+                            <button type="button" data-balance-person={entry.personId} className="mobile-person-button" onClick={() => selectPerson(entry.personId)}>
+                                {entry.fullName}<small>{entry.active ? 'Активен' : 'Неактивен'}</small>
+                            </button>
+                            <span className={`mobile-balance-value ${balanceClass(entry.balance)}`}>{balanceLabel(entry.balance)}</span>
+                        </div>
+                        {filtered && <p className="muted">По выбранным абонементам</p>}
+                        <dl className="mobile-balance-totals">
+                            <div><dt>Начислено</dt><dd>{money(entry.charged)}</dd></div>
+                            <div><dt>{filtered ? 'Распределено' : 'Оплачено'}</dt><dd>{money(entry.paid)}</dd></div>
+                        </dl>
+                        <p className="mobile-free-context">Не распределено: {money(entry.unallocated)}{filtered && ' · справочно, вне итогов выбранных групп'}</p>
+                        {canExpand && <>
+                            <button type="button" className="mobile-balance-expand" aria-expanded={open} aria-controls={detailId}
+                                onClick={() => toggleExpanded(entry.personId)}>{open ? 'Свернуть детализацию' : 'По абонементам'}<span aria-hidden="true">{open ? '−' : '+'}</span></button>
+                            <div id={detailId} hidden={!open} className="mobile-balance-breakdown">
+                                {groups.map((group) => <section key={subscriptionKey(group.subscriptionId)}>
+                                    <h3>{subscriptionTitle(group)}</h3>
+                                    <dl className="mobile-balance-totals">
+                                        <div><dt>Начислено</dt><dd>{money(group.charged)}</dd></div>
+                                        <div><dt>Распределено</dt><dd>{money(group.allocated)}</dd></div>
+                                    </dl>
+                                    <p className={balanceClass(group.balance)}>{balanceLabel(group.balance)}</p>
+                                </section>)}
+                                {hasFree && <section><h3>Нераспределённые оплаты</h3><p className="credit">{money(entry.unallocated)}</p></section>}
+                            </div>
+                        </>}
+                    </article>;
+                })}
+                {!rows.length && <p className="empty-state muted">{filtered ? 'Нет начислений по выбранным абонементам.' : 'Каякеров пока нет.'}</p>}
             </div>
         </section>
     );

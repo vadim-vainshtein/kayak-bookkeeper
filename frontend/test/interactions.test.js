@@ -61,6 +61,65 @@ test('modal state closes suppress native callbacks while user close stops propag
     assert.equal(stopped, 2);
 });
 
+test('full-screen dialog padding and blank interior do not dismiss the form', async () => {
+    let nativeCloses = 0;
+    const node = {
+        open: true,
+        close() { nativeCloses++; this.open = false; },
+        getBoundingClientRect: () => ({ left: 0, top: 0, right: 390, bottom: 844 }),
+    };
+    const renderer = await render(h(Modal, { open: true, title: 'Оплата', onClose() {} },
+        h('input', { defaultValue: 'Черновик оплаты' })), {
+        createNodeMock: (element) => element.type === 'dialog' ? node : null,
+    });
+    const dialog = renderer.root.findByType('dialog');
+    const field = renderer.root.findByType('input');
+    for (const [clientX, clientY] of [[5, 5], [195, 800], [0, 400], [390, 844]]) {
+        dialog.props.onClick({ target: node, currentTarget: node, clientX, clientY });
+    }
+    assert.equal(nativeCloses, 0);
+    assert.equal(node.open, true);
+    assert.equal(renderer.root.findByType('input'), field);
+});
+
+test('dialog dismisses only clicks on the backdrop outside its rectangle', async () => {
+    let nativeCloses = 0;
+    const node = {
+        open: true,
+        close() { nativeCloses++; },
+        getBoundingClientRect: () => ({ left: 100, top: 100, right: 600, bottom: 500 }),
+    };
+    const renderer = await render(h(Modal, { open: true, title: 'Оплата', onClose() {} }), {
+        createNodeMock: (element) => element.type === 'dialog' ? node : null,
+    });
+    const dialog = renderer.root.findByType('dialog');
+    for (const [clientX, clientY] of [[99, 200], [601, 200], [200, 99], [200, 501]]) {
+        dialog.props.onClick({ target: node, currentTarget: node, clientX, clientY });
+    }
+    assert.equal(nativeCloses, 4);
+    dialog.props.onClick({ target: {}, currentTarget: node, clientX: 99, clientY: 99 });
+    assert.equal(nativeCloses, 4, 'bubbled clicks from children do not dismiss the dialog');
+});
+
+test('busy dialog blocks coordinate-confirmed backdrop clicks as well as Escape and close button', async () => {
+    let nativeCloses = 0, cancelled = false;
+    const node = {
+        open: true,
+        close() { nativeCloses++; },
+        getBoundingClientRect: () => ({ left: 100, top: 100, right: 600, bottom: 500 }),
+    };
+    const renderer = await render(h(Modal, { open: true, closeDisabled: true, title: 'Сохранение', onClose() {} }), {
+        createNodeMock: (element) => element.type === 'dialog' ? node : null,
+    });
+    const dialog = renderer.root.findByType('dialog');
+    dialog.props.onClick({ target: node, currentTarget: node, clientX: 50, clientY: 50 });
+    dialog.props.onCancel({ preventDefault() { cancelled = true; } });
+    renderer.root.findByType('button').props.onClick();
+    assert.equal(nativeCloses, 0);
+    assert.equal(cancelled, true);
+    assert.equal(renderer.root.findByType('button').props.disabled, true);
+});
+
 test('finalized edits require preview and explicit confirmation before saving', async (t) => {
     const saved = [];
     let closed = 0,

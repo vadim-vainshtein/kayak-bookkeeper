@@ -46,7 +46,7 @@ export default function LedgerDetails({
                 <div className="line">
                     <h2>Операции</h2>
                     {!readOnly && <div className="button-group">
-                        <button className="primary" onClick={() => setChargeDialog(true)}>
+                        <button onClick={() => setChargeDialog(true)}>
                             Добавить начисление
                         </button>
                         <button className="primary" onClick={() => setPaymentDialog(true)}>

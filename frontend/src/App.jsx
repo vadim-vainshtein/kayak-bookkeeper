@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import Login from './components/Login.jsx';
+import Navigation, { MoreMenu, sections } from './components/Navigation.jsx';
+import { NavigationLock } from './components/NavigationLock.jsx';
 import Overview from './features/overview/Overview.jsx';
 import People from './features/people/People.jsx';
 import Subscriptions from './features/subscriptions/Subscriptions.jsx';
@@ -31,6 +33,11 @@ function ClubApp({ auth }) {
     const { authorization, user, account, api, setAuthorization } = auth;
     const readOnly = account.role !== 'ADMIN';
     const [tab, setTab] = useState('overview');
+    const pageHeading = useRef(null);
+    useLayoutEffect(() => { pageHeading.current?.focus(); }, [tab]);
+    const [navigationBlocked, setNavigationBlocked] = useState(false);
+    const navigate = (next) => { if (!navigationBlocked) setTab(next); };
+    const logout = () => { if (!navigationBlocked) auth.logout(); };
     const [reportType, setReportType] = useState('financial');
     const { submitting, error, message, setError, run, submit } = useMutation();
     const { people, personBalances, subscriptions, rates, loading, load, refreshBalances } = useClubData(
@@ -56,7 +63,7 @@ function ClubApp({ auth }) {
     });
     const { changePassword } = createAccountActions({ api, submit, user, setAuthorization });
     const content = {
-        overview: <Overview readOnly={readOnly} people={people} subscriptions={subscriptions} rates={rates} go={setTab} />,
+        overview: <Overview readOnly={readOnly} people={people} subscriptions={subscriptions} rates={rates} go={navigate} />,
         people: <People readOnly={readOnly} people={people} onAdd={addPerson} onUpdate={updatePerson} submitting={submitting} />,
         subscriptions: (
             <Subscriptions
@@ -104,40 +111,23 @@ function ClubApp({ auth }) {
         ),
         password: !readOnly && <PasswordSettings onSubmit={changePassword} submitting={submitting} />,
         users: !readOnly && <Users api={api} />,
+        more: <MoreMenu go={navigate} readOnly={readOnly} logout={logout} />,
     };
+    const [title, subtitle] = sections.find(([id]) => id === tab)?.slice(1)
+        || (tab === 'users' ? ['Пользователи', 'Учётные записи и роли']
+            : tab === 'password' ? ['Пароль', 'Безопасность вашей учётной записи'] : ['Ещё', `${user} · ${readOnly ? 'Только чтение' : 'Администратор'}`]);
     return (
-        <main className="shell">
+        <NavigationLock.Provider value={setNavigationBlocked}>
+        <div className="app-shell">
+            <a className="skip-link" href="#main-content">К содержимому</a>
+            <Navigation tab={tab} go={navigate} readOnly={readOnly} user={user} logout={logout} busy={navigationBlocked} />
+            <div className="workspace">
             <header className="topbar">
-                <div>
-                    <h1>Kayak Bookkeeper</h1>
-                    <span className="muted">Управление клубом</span>
-                </div>
-                <div>
-                    <span className="muted">{user} · {readOnly ? 'Только чтение' : 'Администратор'} · </span>
-                    <button onClick={auth.logout}>Выйти</button>
-                </div>
+                <span>Управление клубом</span>
+                <span className="topbar-account">{user} · {readOnly ? 'Только чтение' : 'Администратор'}</span>
             </header>
-            <nav className="tabs" aria-label="Разделы приложения">
-                {[
-                    ['overview', 'Обзор'],
-                    ['people', 'Каякеры'],
-                    ['subscriptions', 'Абонементы'],
-                    ['rates', 'Тарифы'],
-                    ['ledger', 'Начисления и оплаты'],
-                    ['reports', 'Отчёты'],
-                    ...(!readOnly ? [['users', 'Пользователи'], ['password', 'Пароль']] : []),
-                ].map(([id, title]) => (
-                    <button
-                        key={id}
-                        className={tab === id ? 'active' : ''}
-                        aria-current={tab === id ? 'page' : undefined}
-                        onClick={() => setTab(id)}
-                    >
-                        {title}
-                    </button>
-                ))}
-            </nav>
-            <div className="spacer" />
+            <main id="main-content" className="page-content">
+            <div className="page-heading"><h1 ref={pageHeading} tabIndex={-1}>{title}</h1><p className="muted">{subtitle}</p></div>
             {error && (
                 <p className="notice" role="alert">
                     {error}
@@ -155,6 +145,9 @@ function ClubApp({ auth }) {
             ) : (
                 content[tab]
             )}
-        </main>
+            </main>
+            </div>
+        </div>
+        </NavigationLock.Provider>
     );
 }
