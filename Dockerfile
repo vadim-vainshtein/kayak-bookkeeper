@@ -5,7 +5,8 @@ COPY frontend/package.json frontend/package-lock.json ./frontend/
 RUN mvn -B -ntp dependency:go-offline
 COPY src ./src
 COPY frontend ./frontend
-RUN mvn -B -ntp package
+COPY scripts/docker-package.sh ./
+RUN sh ./docker-package.sh
 
 FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S bookkeeper && adduser -S bookkeeper -G bookkeeper
